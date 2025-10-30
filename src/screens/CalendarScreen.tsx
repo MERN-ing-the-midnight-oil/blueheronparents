@@ -309,50 +309,56 @@ export default function CalendarScreen() {
                         <Text style={styles.emptySubtitle}>Be the first to add a community event!</Text>
                     </View>
                 ) : (
-                    events.map(event => (
-                        <View key={event.id} style={styles.eventCard}>
-                            <TouchableOpacity
-                                onPress={() => setSelectedEvent(event)}
-                            >
-                                <View style={styles.eventHeader}>
-                                    <Text style={styles.eventDate}>
-                                        {formatEventDate(event.date)} at {event.time}
+                    events.map(event => {
+                        // Check if user is the creator - handle both createdBy (new) and userId (legacy) fields
+                        const isCreator = event.createdBy === auth.currentUser?.uid || 
+                                        (!event.createdBy && event.createdByEmail === auth.currentUser?.email);
+                        
+                        return (
+                            <View key={event.id} style={styles.eventCard}>
+                                <TouchableOpacity
+                                    onPress={() => setSelectedEvent(event)}
+                                >
+                                    <View style={styles.eventHeader}>
+                                        <Text style={styles.eventDate}>
+                                            {formatEventDate(event.date)} at {event.time}
+                                        </Text>
+                                    </View>
+                                    <Text style={styles.eventTitle}>{event.title}</Text>
+                                    <Text style={styles.eventLocation}>📍 {event.location}</Text>
+                                    <Text style={styles.eventDescription} numberOfLines={2}>
+                                        {event.description}
                                     </Text>
-                                </View>
-                                <Text style={styles.eventTitle}>{event.title}</Text>
-                                <Text style={styles.eventLocation}>📍 {event.location}</Text>
-                                <Text style={styles.eventDescription} numberOfLines={2}>
-                                    {event.description}
-                                </Text>
-                                <View style={styles.eventFooter}>
-                                    <Text style={styles.attendeeCount}>
-                                        👥 {event.attendees?.length || 0} attending
-                                    </Text>
-                                    <Text style={styles.createdBy}>
-                                        by {event.createdByEmail}
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
-                            
-                            {/* Edit and Delete buttons for event creator */}
-                            {event.createdBy === auth.currentUser?.uid && (
-                                <View style={styles.eventCardActions}>
-                                    <TouchableOpacity
-                                        style={styles.eventCardActionButton}
-                                        onPress={() => handleEdit(event)}
-                                    >
-                                        <Text style={styles.eventCardActionText}>✏️ Edit</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={styles.eventCardActionButton}
-                                        onPress={() => handleDelete(event.id)}
-                                    >
-                                        <Text style={[styles.eventCardActionText, styles.deleteActionText]}>🗑️ Delete</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            )}
-                        </View>
-                    ))
+                                    <View style={styles.eventFooter}>
+                                        <Text style={styles.attendeeCount}>
+                                            👥 {event.attendees?.length || 0} attending
+                                        </Text>
+                                        <Text style={styles.createdBy}>
+                                            by {event.createdByEmail}
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+                                
+                                {/* Edit and Delete buttons for event creator */}
+                                {isCreator && (
+                                    <View style={styles.eventCardActions}>
+                                        <TouchableOpacity
+                                            style={styles.eventCardActionButton}
+                                            onPress={() => handleEdit(event)}
+                                        >
+                                            <Text style={styles.eventCardActionText}>✏️ Edit</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={styles.eventCardActionButton}
+                                            onPress={() => handleDelete(event.id)}
+                                        >
+                                            <Text style={[styles.eventCardActionText, styles.deleteActionText]}>🗑️ Delete</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
+                            </View>
+                        );
+                    })
                 )}
             </ScrollView>
 
@@ -607,7 +613,8 @@ export default function CalendarScreen() {
                             </Text>
 
                             {/* Edit and Delete buttons for event creator */}
-                            {selectedEvent.createdBy === auth.currentUser?.uid && (
+                            {(selectedEvent.createdBy === auth.currentUser?.uid || 
+                              (!selectedEvent.createdBy && selectedEvent.createdByEmail === auth.currentUser?.email)) && (
                                 <View style={styles.creatorActions}>
                                     <TouchableOpacity
                                         style={styles.editEventButton}
