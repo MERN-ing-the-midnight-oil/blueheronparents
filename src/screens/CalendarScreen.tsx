@@ -310,34 +310,11 @@ export default function CalendarScreen() {
                     </View>
                 ) : (
                     events.map(event => {
-                        // Check if user is the creator - handle both UID and email comparison
-                        const isCreator = (event.createdBy && event.createdBy === auth.currentUser?.uid) || 
-                                        (event.createdByEmail && event.createdByEmail === auth.currentUser?.email);
+                        // TEMPORARY: Show buttons for ALL users to test rendering
+                        const isCreator = true; // TESTING - was: (event.createdBy && event.createdBy === auth.currentUser?.uid) || (event.createdByEmail && event.createdByEmail === auth.currentUser?.email);
                         
                         return (
                             <View key={event.id} style={styles.eventCard}>
-                                {/* DEBUG: VERY VISIBLE - Show at top of card */}
-                                <View style={{backgroundColor: 'yellow', padding: 10, marginBottom: 10}}>
-                                    <Text style={{fontSize: 12, fontWeight: 'bold', color: 'black'}}>
-                                        🔍 DEBUG INFO 🔍
-                                    </Text>
-                                    <Text style={{fontSize: 10, color: 'black'}}>
-                                        isCreator: {isCreator ? 'TRUE ✅' : 'FALSE ❌'}
-                                    </Text>
-                                    <Text style={{fontSize: 10, color: 'black'}}>
-                                        currentUID: {auth.currentUser?.uid || 'NULL'}
-                                    </Text>
-                                    <Text style={{fontSize: 10, color: 'black'}}>
-                                        currentEmail: {auth.currentUser?.email || 'NULL'}
-                                    </Text>
-                                    <Text style={{fontSize: 10, color: 'black'}}>
-                                        event.createdBy: {event.createdBy || 'NULL'}
-                                    </Text>
-                                    <Text style={{fontSize: 10, color: 'black'}}>
-                                        event.createdByEmail: {event.createdByEmail || 'NULL'}
-                                    </Text>
-                                </View>
-
                                 <TouchableOpacity
                                     onPress={() => setSelectedEvent(event)}
                                 >
@@ -361,32 +338,21 @@ export default function CalendarScreen() {
                                     </View>
                                 </TouchableOpacity>
                                 
-                                {/* Edit and Delete buttons for event creator */}
-                                {isCreator && (
-                                    <View style={styles.eventCardActions}>
-                                        <TouchableOpacity
-                                            style={styles.eventCardActionButton}
-                                            onPress={() => handleEdit(event)}
-                                        >
-                                            <Text style={styles.eventCardActionText}>✏️ Edit</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={styles.eventCardActionButton}
-                                            onPress={() => handleDelete(event.id)}
-                                        >
-                                            <Text style={[styles.eventCardActionText, styles.deleteActionText]}>🗑️ Delete</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
-                                
-                                {/* DEBUG: Show if not creator */}
-                                {!isCreator && (
-                                    <View style={{backgroundColor: 'red', padding: 10, marginTop: 10}}>
-                                        <Text style={{fontSize: 12, color: 'white', fontWeight: 'bold'}}>
-                                            ⚠️ BUTTONS HIDDEN - NOT CREATOR
-                                        </Text>
-                                    </View>
-                                )}
+                                {/* TESTING: Buttons shown for ALL events temporarily */}
+                                <View style={styles.eventCardActions}>
+                                    <TouchableOpacity
+                                        style={styles.eventCardActionButton}
+                                        onPress={() => handleEdit(event)}
+                                    >
+                                        <Text style={styles.eventCardActionText}>✏️ Edit</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.eventCardActionButton}
+                                        onPress={() => handleDelete(event.id)}
+                                    >
+                                        <Text style={[styles.eventCardActionText, styles.deleteActionText]}>🗑️ Delete</Text>
+                                    </TouchableOpacity>
+                                </View>
                             </View>
                         );
                     })
