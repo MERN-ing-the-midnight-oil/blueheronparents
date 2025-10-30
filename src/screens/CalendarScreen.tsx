@@ -310,30 +310,48 @@ export default function CalendarScreen() {
                     </View>
                 ) : (
                     events.map(event => (
-                        <TouchableOpacity
-                            key={event.id}
-                            style={styles.eventCard}
-                            onPress={() => setSelectedEvent(event)}
-                        >
-                            <View style={styles.eventHeader}>
-                                <Text style={styles.eventDate}>
-                                    {formatEventDate(event.date)} at {event.time}
+                        <View key={event.id} style={styles.eventCard}>
+                            <TouchableOpacity
+                                onPress={() => setSelectedEvent(event)}
+                            >
+                                <View style={styles.eventHeader}>
+                                    <Text style={styles.eventDate}>
+                                        {formatEventDate(event.date)} at {event.time}
+                                    </Text>
+                                </View>
+                                <Text style={styles.eventTitle}>{event.title}</Text>
+                                <Text style={styles.eventLocation}>📍 {event.location}</Text>
+                                <Text style={styles.eventDescription} numberOfLines={2}>
+                                    {event.description}
                                 </Text>
-                            </View>
-                            <Text style={styles.eventTitle}>{event.title}</Text>
-                            <Text style={styles.eventLocation}>📍 {event.location}</Text>
-                            <Text style={styles.eventDescription} numberOfLines={2}>
-                                {event.description}
-                            </Text>
-                            <View style={styles.eventFooter}>
-                                <Text style={styles.attendeeCount}>
-                                    👥 {event.attendees?.length || 0} attending
-                                </Text>
-                                <Text style={styles.createdBy}>
-                                    by {event.createdByEmail}
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
+                                <View style={styles.eventFooter}>
+                                    <Text style={styles.attendeeCount}>
+                                        👥 {event.attendees?.length || 0} attending
+                                    </Text>
+                                    <Text style={styles.createdBy}>
+                                        by {event.createdByEmail}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                            
+                            {/* Edit and Delete buttons for event creator */}
+                            {event.createdBy === auth.currentUser?.uid && (
+                                <View style={styles.eventCardActions}>
+                                    <TouchableOpacity
+                                        style={styles.eventCardActionButton}
+                                        onPress={() => handleEdit(event)}
+                                    >
+                                        <Text style={styles.eventCardActionText}>✏️ Edit</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.eventCardActionButton}
+                                        onPress={() => handleDelete(event.id)}
+                                    >
+                                        <Text style={[styles.eventCardActionText, styles.deleteActionText]}>🗑️ Delete</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </View>
                     ))
                 )}
             </ScrollView>
@@ -894,5 +912,28 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 16,
         fontWeight: '600',
+    },
+    eventCardActions: {
+        flexDirection: 'row',
+        gap: 10,
+        marginTop: 10,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+    },
+    eventCardActionButton: {
+        flex: 1,
+        padding: 8,
+        borderRadius: 6,
+        backgroundColor: '#f0f0f0',
+        alignItems: 'center',
+    },
+    eventCardActionText: {
+        fontSize: 14,
+        color: '#666',
+        fontWeight: '500',
+    },
+    deleteActionText: {
+        color: '#d32f2f',
     },
 });
