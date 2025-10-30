@@ -18,6 +18,7 @@ import {
     onSnapshot,
     addDoc,
     updateDoc,
+    deleteDoc,
     doc,
     arrayUnion,
     arrayRemove,
@@ -78,6 +79,7 @@ export default function CalendarScreen() {
     const [loading, setLoading] = useState(true);
     const [showAddEvent, setShowAddEvent] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+    const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
     // Form states
     const [title, setTitle] = useState('');
@@ -203,6 +205,85 @@ export default function CalendarScreen() {
         } catch (error: any) {
             Alert.alert('Error', error.message);
         }
+    };
+
+    const handleEdit = (event: Event) => {
+        setEditingEvent(event);
+        // Parse the date from the event
+        if (event.date?.toDate) {
+            const eventDate = event.date.toDate();
+            setMonth((eventDate.getMonth() + 1).toString());
+            setDay(eventDate.getDate().toString());
+            setYear(eventDate.getFullYear().toString());
+        }
+        setTitle(event.title);
+        setDescription(event.description);
+        setTime(event.time);
+        setLocation(event.location);
+        setCategory(event.category);
+        setSelectedEvent(null); // Close the details modal
+    };
+
+    const handleUpdate = async () => {
+        if (!editingEvent || !title.trim() || !month.trim() || !day.trim() || !year.trim() || !time.trim()) {
+            Alert.alert('Error', 'Please fill in all required fields');
+            return;
+        }
+
+        try {
+            // Parse date fields into Firestore Timestamp
+            const fullYear = parseInt(year) < 50 ? 2000 + parseInt(year) :
+                parseInt(year) < 100 ? 1900 + parseInt(year) : parseInt(year);
+            const eventDate = new Date(fullYear, parseInt(month) - 1, parseInt(day));
+
+            await updateDoc(doc(db, 'events', editingEvent.id), {
+                title: title.trim(),
+                description: description.trim(),
+                date: Timestamp.fromDate(eventDate),
+                time: time.trim(),
+                location: location.trim(),
+                category: category,
+                editedAt: serverTimestamp(),
+            });
+
+            // Clear form
+            setTitle('');
+            setDescription('');
+            setMonth('');
+            setDay('');
+            setYear('');
+            setTime('');
+            setLocation('');
+            setCategory('other');
+            setEditingEvent(null);
+
+            Alert.alert('Success', 'Event updated successfully!');
+        } catch (error: any) {
+            Alert.alert('Error', error.message);
+        }
+    };
+
+    const handleDelete = async (eventId: string) => {
+        Alert.alert(
+            'Delete Event',
+            'Are you sure you want to delete this event?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await deleteDoc(doc(db, 'events', eventId));
+                            setSelectedEvent(null);
+                            Alert.alert('Success', 'Event deleted successfully!');
+                        } catch (error: any) {
+                            Alert.alert('Error', error.message);
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     return (
@@ -347,6 +428,105 @@ export default function CalendarScreen() {
                 </SafeAreaView>
             </Modal>
 
+            {/* Edit Event Modal */}
+            <Modal visible={!!editingEvent} animationType="slide" presentationStyle="pageSheet">
+                <SafeAreaView style={styles.modalContainer}>
+                    <View style={styles.modalHeader}>
+                        <TouchableOpacity onPress={() => {
+                            setEditingEvent(null);
+                            // Clear form
+                            setTitle('');
+                            setDescription('');
+                            setMonth('');
+                            setDay('');
+                            setYear('');
+                            setTime('');
+                            setLocation('');
+                            setCategory('other');
+                        }}>
+                            <Text style={styles.modalCloseButton}>Cancel</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.modalTitle}>Edit Event</Text>
+                        <TouchableOpacity onPress={handleUpdate}>
+                            <Text style={styles.modalSaveButton}>Save</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    <ScrollView style={styles.modalContent}>
+                        <Text style={styles.label}>Event Title *</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={title}
+                            onChangeText={setTitle}
+                            placeholder="e.g. Playground Meetup"
+                        />
+
+                        <Text style={styles.label}>Date *</Text>
+                        <View style={styles.dateRow}>
+                            <View style={styles.dateField}>
+                                <Text style={styles.dateLabel}>Month</Text>
+                                <TextInput
+                                    style={styles.dateInput}
+                                    value={month}
+                                    onChangeText={setMonth}
+                                    placeholder="MM"
+                                    keyboardType="numeric"
+                                    maxLength={2}
+                                />
+                            </View>
+                            <View style={styles.dateField}>
+                                <Text style={styles.dateLabel}>Day</Text>
+                                <TextInput
+                                    style={styles.dateInput}
+                                    value={day}
+                                    onChangeText={setDay}
+                                    placeholder="DD"
+                                    keyboardType="numeric"
+                                    maxLength={2}
+                                />
+                            </View>
+                            <View style={styles.dateField}>
+                                <Text style={styles.dateLabel}>Year</Text>
+                                <TextInput
+                                    style={styles.dateInput}
+                                    value={year}
+                                    onChangeText={setYear}
+                                    placeholder="YYYY"
+                                    keyboardType="numeric"
+                                    maxLength={4}
+                                />
+                            </View>
+                        </View>
+
+                        <Text style={styles.label}>Time *</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={time}
+                            onChangeText={setTime}
+                            placeholder="e.g. 10:00 AM"
+                        />
+
+                        <Text style={styles.label}>Location</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={location}
+                            onChangeText={setLocation}
+                            placeholder="e.g. Fairhaven Park"
+                        />
+
+                        <Text style={styles.label}>Description</Text>
+                        <TextInput
+                            style={[styles.input, styles.textArea]}
+                            value={description}
+                            onChangeText={setDescription}
+                            placeholder="Event details..."
+                            multiline
+                            numberOfLines={4}
+                        />
+                    </ScrollView>
+                </SafeAreaView>
+            </Modal>
+
             {/* Event Details Modal */}
             <Modal visible={!!selectedEvent} animationType="slide" presentationStyle="pageSheet">
                 <SafeAreaView style={styles.modalContainer}>
@@ -407,6 +587,25 @@ export default function CalendarScreen() {
                             <Text style={styles.createdByDetail}>
                                 Created by {selectedEvent.createdByEmail}
                             </Text>
+
+                            {/* Edit and Delete buttons for event creator */}
+                            {selectedEvent.createdBy === auth.currentUser?.uid && (
+                                <View style={styles.creatorActions}>
+                                    <TouchableOpacity
+                                        style={styles.editEventButton}
+                                        onPress={() => handleEdit(selectedEvent)}
+                                    >
+                                        <Text style={styles.editEventButtonText}>✏️ Edit Event</Text>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={styles.deleteEventButton}
+                                        onPress={() => handleDelete(selectedEvent.id)}
+                                    >
+                                        <Text style={styles.deleteEventButtonText}>🗑️ Delete Event</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
                         </ScrollView>
                     )}
                 </SafeAreaView>
@@ -669,5 +868,31 @@ const styles = StyleSheet.create({
         color: '#999',
         textAlign: 'center',
         marginTop: 20,
+    },
+    creatorActions: {
+        marginTop: 20,
+        gap: 10,
+    },
+    editEventButton: {
+        backgroundColor: '#2c5f7c',
+        padding: 15,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    editEventButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    deleteEventButton: {
+        backgroundColor: '#d32f2f',
+        padding: 15,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    deleteEventButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '600',
     },
 });
