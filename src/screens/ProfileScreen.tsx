@@ -44,6 +44,26 @@ export default function ProfileScreen() {
         }
     };
 
+    const handleCompleteProfile = () => {
+        Alert.alert(
+            'Complete Profile',
+            'You will be signed out and then guided through the profile setup process when you sign back in.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Continue',
+                    onPress: async () => {
+                        try {
+                            await signOut(auth);
+                        } catch (error: any) {
+                            Alert.alert('Error', error.message);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     const handleSignOut = () => {
         Alert.alert(
             'Sign Out',
@@ -78,6 +98,17 @@ export default function ProfileScreen() {
             <View style={styles.emptyContainer}>
                 <Text style={styles.emptyTitle}>Profile Not Complete</Text>
                 <Text style={styles.emptyText}>Please complete your profile to connect with other parents</Text>
+
+                <TouchableOpacity
+                    style={styles.completeProfileButton}
+                    onPress={handleCompleteProfile}
+                >
+                    <Text style={styles.completeProfileButtonText}>Complete Profile Now</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
+                    <Text style={styles.logoutButtonText}>Sign Out</Text>
+                </TouchableOpacity>
             </View>
         );
     }
@@ -120,7 +151,7 @@ export default function ProfileScreen() {
 
             {profile.children && profile.children.length > 0 && (
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Children</Text>
+                    <Text style={styles.sectionTitle}>My Heron Chicks</Text>
 
                     {profile.children.map((child, index) => (
                         <View key={index} style={styles.childCard}>
@@ -280,6 +311,35 @@ const styles = StyleSheet.create({
         borderColor: '#d32f2f',
     },
     signOutButtonText: {
+        color: '#d32f2f',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    completeProfileButton: {
+        backgroundColor: '#2c5f7c',
+        marginHorizontal: 20,
+        marginTop: 20,
+        marginBottom: 10,
+        padding: 15,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    completeProfileButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    logoutButton: {
+        backgroundColor: '#fff',
+        marginHorizontal: 20,
+        marginTop: 10,
+        padding: 15,
+        borderRadius: 8,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#d32f2f',
+    },
+    logoutButtonText: {
         color: '#d32f2f',
         fontSize: 16,
         fontWeight: 'bold',

@@ -9,8 +9,11 @@ import {
     Alert,
     Modal,
     Image,
-    SafeAreaView
+    SafeAreaView,
+    ScrollView,
+    Dimensions
 } from 'react-native';
+import CommunityGuidelinesScreen from './CommunityGuidelinesScreen';
 import {
     collection,
     query,
@@ -22,10 +25,12 @@ import {
     doc,
     getDoc,
     getDocs,
-    or,
     updateDoc
 } from 'firebase/firestore';
 import { db, auth } from '../../firebase.config';
+
+const { width } = Dimensions.get('window');
+const GRID_ITEM_SIZE = (width - 60) / 4; // 4 items per row with padding
 
 interface User {
     id: string;
@@ -45,63 +50,50 @@ interface Message {
     read: boolean;
 }
 
-interface Conversation {
-    id: string;
-    participants: string[];
-    lastMessage: string;
-    lastMessageTime: any;
-    lastMessageSender: string;
-    unreadCount?: { [userId: string]: number };
-}
-
-interface ConversationWithUser extends Conversation {
+interface MessageWithUser extends Message {
     otherUser: User;
 }
 
+interface UserProfile extends User {
+    phone?: string;
+    showEmail: boolean;
+    showPhone: boolean;
+    profileComplete: boolean;
+}
+
+interface ReportData {
+    reportedUserId: string;
+    reportedByUserId: string;
+    reason: string;
+    description: string;
+    timestamp: any;
+    status: 'pending' | 'reviewed' | 'resolved';
+}
+
 export default function MessagesScreen() {
-    const [conversations, setConversations] = useState<ConversationWithUser[]>([]);
     const [users, setUsers] = useState<User[]>([]);
-    const [showNewMessage, setShowNewMessage] = useState(false);
-    const [showConversation, setShowConversation] = useState<ConversationWithUser | null>(null);
-    const [messages, setMessages] = useState<Message[]>([]);
+    const [allMessages, setAllMessages] = useState<MessageWithUser[]>([]);
+    const [selectedUser, setSelectedUser] = useState<User | null>(null);
+    const [userMessages, setUserMessages] = useState<Message[]>([]);
+    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [messageText, setMessageText] = useState('');
     const [loading, setLoading] = useState(true);
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [reportReason, setReportReason] = useState('');
+    const [reportDescription, setReportDescription] = useState('');
+    const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
+    const [showGuidelines, setShowGuidelines] = useState(false);
 
     useEffect(() => {
         loadUsers();
-        loadConversations();
+        loadAllMessages();
     }, []);
 
     useEffect(() => {
-        if (!showConversation) return;
-
-        const q = query(
-            collection(db, 'messages'),
-            where('conversationId', '==', showConversation.id),
-            orderBy('createdAt', 'asc')
-        );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            try {
-                const messagesData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                } as Message));
-                setMessages(messagesData);
-
-                // Mark messages as read
-                markMessagesAsRead(showConversation.id);
-            } catch (error) {
-                console.error('Error loading messages:', error);
-                setMessages([]);
-            }
-        }, (error) => {
-            console.error('Messages listener error:', error);
-            setMessages([]);
-        });
-
-        return unsubscribe;
-    }, [showConversation]);
+        if (!selectedUser) return;
+        loadUserMessages(selectedUser.id);
+        loadUserProfile(selectedUser.id);
+    }, [selectedUser, users]);
 
     const loadUsers = async () => {
         try {
@@ -109,7 +101,7 @@ export default function MessagesScreen() {
             const querySnapshot = await getDocs(q);
             const usersData = querySnapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() } as User))
-                .filter(user => user.id !== auth.currentUser?.uid); // Exclude current user
+                .filter(user => user.id !== auth.currentUser?.uid);
             setUsers(usersData);
         } catch (error: any) {
             Alert.alert('Error', error.message);
@@ -118,111 +110,179 @@ export default function MessagesScreen() {
         }
     };
 
-    const loadConversations = () => {
+    const loadAllMessages = () => {
         if (!auth.currentUser) return;
 
-        const q = query(
-            collection(db, 'conversations'),
-            where('participants', 'array-contains', auth.currentUser.uid)
+        // Query messages where current user is sender
+        const q1 = query(
+            collection(db, 'messages'),
+            where('senderId', '==', auth.currentUser.uid),
+            orderBy('createdAt', 'desc')
         );
 
-        const unsubscribe = onSnapshot(q, async (snapshot) => {
-            try {
-                if (snapshot.empty) {
-                    setConversations([]);
-                    return;
-                }
+        // Query messages where current user is recipient
+        const q2 = query(
+            collection(db, 'messages'),
+            where('recipientId', '==', auth.currentUser.uid),
+            orderBy('createdAt', 'desc')
+        );
 
-                const conversationsData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                } as Conversation));
+        let messages1: Message[] = [];
+        let messages2: Message[] = [];
 
-                // Get user data for each conversation
-                const conversationsWithUsers = await Promise.all(
-                    conversationsData.map(async (conv) => {
-                        const otherUserId = conv.participants.find(id => id !== auth.currentUser?.uid);
-                        if (!otherUserId) return null;
+        const processAllMessages = async () => {
+            const allUserMessages = [...messages1, ...messages2]
+                .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
 
+            // Add user data to messages
+            const messagesWithUsers = await Promise.all(
+                allUserMessages.map(async (message) => {
+                    const otherUserId = message.senderId === auth.currentUser?.uid
+                        ? message.recipientId
+                        : message.senderId;
+
+                    let otherUser = users.find(u => u.id === otherUserId);
+
+                    if (!otherUser) {
                         try {
                             const userDoc = await getDoc(doc(db, 'users', otherUserId));
-                            const userData = userDoc.exists() ? { id: userDoc.id, ...userDoc.data() } as User : null;
-
-                            if (!userData) return null;
-
-                            return {
-                                ...conv,
-                                otherUser: userData
-                            } as ConversationWithUser;
+                            otherUser = userDoc.exists() ? { id: userDoc.id, ...userDoc.data() } as User : undefined;
                         } catch (error) {
-                            console.error('Error loading user data:', error);
+                            console.error('Error loading user:', error);
                             return null;
                         }
-                    })
-                );
+                    }
 
-                setConversations(conversationsWithUsers.filter(Boolean) as ConversationWithUser[]);
-            } catch (error) {
-                console.error('Error processing conversations:', error);
-                setConversations([]);
-            }
+                    return otherUser ? { ...message, otherUser } as MessageWithUser : null;
+                })
+            );
+
+            setAllMessages(messagesWithUsers.filter(Boolean) as MessageWithUser[]);
+        };
+
+        // Listen to both queries
+        const unsubscribe1 = onSnapshot(q1, (snapshot) => {
+            messages1 = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+            processAllMessages();
         }, (error) => {
-            console.error('Conversations listener error:', error);
-            setConversations([]);
+            console.error('Error in loadAllMessages q1:', error);
         });
 
-        return unsubscribe;
+        const unsubscribe2 = onSnapshot(q2, (snapshot) => {
+            messages2 = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+            processAllMessages();
+        }, (error) => {
+            console.error('Error in loadAllMessages q2:', error);
+        });
+
+        return () => {
+            unsubscribe1();
+            unsubscribe2();
+        };
     };
 
-    const markMessagesAsRead = async (conversationId: string) => {
+    const loadUserMessages = (userId: string) => {
+        if (!auth.currentUser) return;
+
+        // Query messages where current user is sender to selected user (no orderBy to avoid index requirement)
+        const q1 = query(
+            collection(db, 'messages'),
+            where('senderId', '==', auth.currentUser.uid),
+            where('recipientId', '==', userId)
+        );
+
+        // Query messages where selected user is sender to current user (no orderBy to avoid index requirement)
+        const q2 = query(
+            collection(db, 'messages'),
+            where('senderId', '==', userId),
+            where('recipientId', '==', auth.currentUser.uid)
+        );
+
+        // Combine results from both queries
+        const unsubscribes: (() => void)[] = [];
+        let messages1: Message[] = [];
+        let messages2: Message[] = [];
+
+        const updateMessages = () => {
+            const allMessages = [...messages1, ...messages2]
+                .sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
+            setUserMessages(allMessages);
+        };
+
+        // Listen to first query
+        const unsubscribe1 = onSnapshot(
+            q1,
+            (snapshot) => {
+                messages1 = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+                updateMessages();
+            },
+            (error) => {
+                console.error('Error in loadUserMessages q1:', error);
+            }
+        );
+
+        // Listen to second query
+        const unsubscribe2 = onSnapshot(
+            q2,
+            (snapshot) => {
+                messages2 = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+                updateMessages();
+            },
+            (error) => {
+                console.error('Error in loadUserMessages q2:', error);
+            }
+        );
+
+        unsubscribes.push(unsubscribe1, unsubscribe2);
+
+        return () => {
+            unsubscribes.forEach(unsub => unsub());
+        };
+    };
+
+    const loadUserProfile = async (userId: string) => {
         try {
-            const q = query(
-                collection(db, 'messages'),
-                where('conversationId', '==', conversationId),
-                where('recipientId', '==', auth.currentUser?.uid),
-                where('read', '==', false)
-            );
-
-            const snapshot = await getDocs(q);
-
-            // Update each unread message
-            const updates = snapshot.docs.map(messageDoc =>
-                updateDoc(doc(db, 'messages', messageDoc.id), { read: true })
-            );
-
-            await Promise.all(updates);
+            const userDoc = await getDoc(doc(db, 'users', userId));
+            if (userDoc.exists()) {
+                setUserProfile({ id: userDoc.id, ...userDoc.data() } as UserProfile);
+            }
         } catch (error) {
-            console.error('Error marking messages as read:', error);
+            console.error('Error loading user profile:', error);
         }
     };
 
     const createOrGetConversation = async (otherUserId: string): Promise<string> => {
-        // Check if conversation already exists
-        const q = query(
-            collection(db, 'conversations'),
-            where('participants', 'array-contains', auth.currentUser!.uid)
-        );
+        try {
+            console.log('Creating/getting conversation with user:', otherUserId);
+            console.log('Current user:', auth.currentUser?.uid);
 
-        const snapshot = await getDocs(q);
-        const existingConv = snapshot.docs.find(doc => {
-            const data = doc.data();
-            return data.participants.includes(otherUserId);
-        });
+            const q = query(
+                collection(db, 'conversations'),
+                where('participants', 'array-contains', auth.currentUser!.uid)
+            );
 
-        if (existingConv) {
-            return existingConv.id;
+            const snapshot = await getDocs(q);
+            console.log('Found conversations:', snapshot.docs.length);
+
+            const existingConv = snapshot.docs.find(doc => {
+                const data = doc.data();
+                return data.participants.includes(otherUserId);
+            });
+
+            if (existingConv) {
+                console.log('Found existing conversation:', existingConv.id);
+                return existingConv.id;
+            }
+        } catch (error) {
+            console.error('Error in createOrGetConversation:', error);
+            throw error;
         }
 
-        // Create new conversation
         const conversationData = {
             participants: [auth.currentUser!.uid, otherUserId],
             lastMessage: '',
             lastMessageTime: serverTimestamp(),
             lastMessageSender: '',
-            unreadCount: {
-                [auth.currentUser!.uid]: 0,
-                [otherUserId]: 0
-            }
         };
 
         const docRef = await addDoc(collection(db, 'conversations'), conversationData);
@@ -230,22 +290,20 @@ export default function MessagesScreen() {
     };
 
     const sendMessage = async () => {
-        if (!messageText.trim() || !showConversation) return;
+        if (!messageText.trim() || !selectedUser) return;
 
         try {
-            const conversationId = await createOrGetConversation(showConversation.otherUser.id);
+            const conversationId = await createOrGetConversation(selectedUser.id);
 
-            // Add message
             await addDoc(collection(db, 'messages'), {
                 text: messageText,
                 senderId: auth.currentUser!.uid,
-                recipientId: showConversation.otherUser.id,
+                recipientId: selectedUser.id,
                 conversationId,
                 createdAt: serverTimestamp(),
                 read: false
             });
 
-            // Update conversation
             await updateDoc(doc(db, 'conversations', conversationId), {
                 lastMessage: messageText,
                 lastMessageTime: serverTimestamp(),
@@ -256,6 +314,85 @@ export default function MessagesScreen() {
         } catch (error: any) {
             Alert.alert('Error', error.message);
         }
+    };
+
+    const reportUser = async () => {
+        if (!selectedUser || !reportReason.trim()) {
+            Alert.alert('Error', 'Please select a reason for reporting');
+            return;
+        }
+
+        try {
+            await addDoc(collection(db, 'reports'), {
+                reportedUserId: selectedUser.id,
+                reportedByUserId: auth.currentUser!.uid,
+                reason: reportReason,
+                description: reportDescription,
+                timestamp: serverTimestamp(),
+                status: 'pending',
+                type: 'user'
+            });
+
+            Alert.alert(
+                'Report Submitted',
+                'Thank you for helping keep our community safe. Your report has been submitted for review.',
+                [{
+                    text: 'OK', onPress: () => {
+                        setShowReportModal(false);
+                        setReportReason('');
+                        setReportDescription('');
+                    }
+                }]
+            );
+        } catch (error: any) {
+            Alert.alert('Error', error.message);
+        }
+    };
+
+    const blockUser = async () => {
+        if (!selectedUser) return;
+
+        Alert.alert(
+            'Block User',
+            `Are you sure you want to block ${selectedUser.displayName}? You won't see their messages or posts.`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Block',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const currentBlocked = blockedUsers;
+                            const newBlocked = [...currentBlocked, selectedUser.id];
+
+                            await updateDoc(doc(db, 'users', auth.currentUser!.uid), {
+                                blockedUsers: newBlocked
+                            });
+
+                            setBlockedUsers(newBlocked);
+                            setSelectedUser(null);
+                            Alert.alert('User Blocked', `${selectedUser.displayName} has been blocked.`);
+                        } catch (error: any) {
+                            Alert.alert('Error', error.message);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const showUserActions = () => {
+        if (!selectedUser) return;
+
+        Alert.alert(
+            'User Actions',
+            `Actions for ${selectedUser.displayName}`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Report User', onPress: () => setShowReportModal(true) },
+                { text: 'Block User', style: 'destructive', onPress: blockUser }
+            ]
+        );
     };
 
     const formatTime = (timestamp: any) => {
@@ -277,104 +414,63 @@ export default function MessagesScreen() {
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
 
-    const renderConversation = ({ item }: { item: ConversationWithUser }) => (
+    const renderUserThumbnail = ({ item }: { item: User }) => (
         <TouchableOpacity
-            style={styles.conversationCard}
-            onPress={() => setShowConversation(item)}
-        >
-            {item.otherUser.profileImageUrl ? (
-                <Image source={{ uri: item.otherUser.profileImageUrl }} style={styles.avatar} />
-            ) : (
-                <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                    <Text style={styles.avatarText}>
-                        {item.otherUser.displayName.charAt(0).toUpperCase()}
-                    </Text>
-                </View>
-            )}
-
-            <View style={styles.conversationInfo}>
-                <View style={styles.conversationListHeader}>
-                    <Text style={styles.userName}>{item.otherUser.displayName}</Text>
-                    <Text style={styles.timeText}>{formatTime(item.lastMessageTime)}</Text>
-                </View>
-                <Text style={styles.lastMessage} numberOfLines={1}>
-                    {item.lastMessage || 'No messages yet'}
-                </Text>
-                {item.otherUser.children && item.otherUser.children.length > 0 && (
-                    <Text style={styles.childrenInfo} numberOfLines={1}>
-                        Parent of {item.otherUser.children.map(c => c.name).join(', ')}
-                    </Text>
-                )}
-            </View>
-        </TouchableOpacity>
-    );
-
-    const startConversation = async (otherUserId: string) => {
-        try {
-            const conversationId = await createOrGetConversation(otherUserId);
-
-            // Find the conversation in our list or create a mock one to show
-            let conversation = conversations.find(c => c.otherUser.id === otherUserId);
-
-            if (!conversation) {
-                // Create a temporary conversation object for display
-                const otherUser = users.find(u => u.id === otherUserId);
-                if (otherUser) {
-                    conversation = {
-                        id: conversationId,
-                        participants: [auth.currentUser!.uid, otherUserId],
-                        lastMessage: '',
-                        lastMessageTime: null,
-                        lastMessageSender: '',
-                        otherUser: otherUser
-                    };
-                }
-            }
-
-            if (conversation) {
-                setShowNewMessage(false);
-                setShowConversation(conversation);
-            }
-        } catch (error: any) {
-            Alert.alert('Error', error.message);
-        }
-    };
-
-    const renderUser = ({ item }: { item: User }) => (
-        <TouchableOpacity
-            style={styles.userCard}
-            onPress={() => startConversation(item.id)}
+            style={styles.userThumbnail}
+            onPress={() => setSelectedUser(item)}
         >
             {item.profileImageUrl ? (
-                <Image source={{ uri: item.profileImageUrl }} style={styles.avatar} />
+                <Image source={{ uri: item.profileImageUrl }} style={styles.thumbnailImage} />
             ) : (
-                <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                    <Text style={styles.avatarText}>
+                <View style={[styles.thumbnailImage, styles.thumbnailPlaceholder]}>
+                    <Text style={styles.thumbnailText}>
                         {item.displayName.charAt(0).toUpperCase()}
                     </Text>
                 </View>
             )}
-
-            <View style={styles.userInfo}>
-                <Text style={styles.userName}>{item.displayName}</Text>
-                <Text style={styles.userEmail}>{item.email}</Text>
-                {item.children && item.children.length > 0 && (
-                    <Text style={styles.childrenInfo}>
-                        Parent of {item.children.map(c => c.name).join(', ')}
-                    </Text>
-                )}
-            </View>
+            <Text style={styles.thumbnailName} numberOfLines={1}>
+                {item.displayName.split(' ')[0]}
+            </Text>
         </TouchableOpacity>
     );
 
-    const renderMessage = ({ item }: { item: Message }) => {
+    const renderMessage = ({ item }: { item: MessageWithUser }) => {
         const isMyMessage = item.senderId === auth.currentUser?.uid;
         return (
-            <View style={[styles.messageContainer, isMyMessage ? styles.myMessage : styles.otherMessage]}>
-                <Text style={[styles.messageText, isMyMessage ? styles.myMessageText : styles.otherMessageText]}>
+            <TouchableOpacity
+                style={styles.messageCard}
+                onPress={() => setSelectedUser(item.otherUser)}
+            >
+                <View style={styles.messageHeader}>
+                    {item.otherUser.profileImageUrl ? (
+                        <Image source={{ uri: item.otherUser.profileImageUrl }} style={styles.messageAvatar} />
+                    ) : (
+                        <View style={[styles.messageAvatar, styles.avatarPlaceholder]}>
+                            <Text style={styles.avatarText}>
+                                {item.otherUser.displayName.charAt(0).toUpperCase()}
+                            </Text>
+                        </View>
+                    )}
+                    <View style={styles.messageInfo}>
+                        <Text style={styles.messageSender}>
+                            {isMyMessage ? `You → ${item.otherUser.displayName}` : `${item.otherUser.displayName} → You`}
+                        </Text>
+                        <Text style={styles.messageTime}>{formatTime(item.createdAt)}</Text>
+                    </View>
+                </View>
+                <Text style={styles.messageText} numberOfLines={2}>{item.text}</Text>
+            </TouchableOpacity>
+        );
+    };
+
+    const renderUserMessage = ({ item }: { item: Message }) => {
+        const isMyMessage = item.senderId === auth.currentUser?.uid;
+        return (
+            <View style={[styles.chatMessage, isMyMessage ? styles.myChatMessage : styles.otherChatMessage]}>
+                <Text style={[styles.chatMessageText, isMyMessage ? styles.myChatMessageText : styles.otherChatMessageText]}>
                     {item.text}
                 </Text>
-                <Text style={[styles.messageTime, isMyMessage ? styles.myMessageTime : styles.otherMessageTime]}>
+                <Text style={[styles.chatMessageTime, isMyMessage ? styles.myChatMessageTime : styles.otherChatMessageTime]}>
                     {formatMessageTime(item.createdAt)}
                 </Text>
             </View>
@@ -384,81 +480,122 @@ export default function MessagesScreen() {
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <Text>Loading messages...</Text>
+                <Text>Loading...</Text>
             </View>
         );
     }
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>Messages</Text>
+            {/* Header with Guidelines Button */}
+            <View style={styles.headerBar}>
+                <Text style={styles.headerTitle}>Community Directory</Text>
                 <TouchableOpacity
-                    style={styles.newMessageButton}
-                    onPress={() => setShowNewMessage(true)}
+                    style={styles.guidelinesButton}
+                    onPress={() => setShowGuidelines(true)}
                 >
-                    <Text style={styles.newMessageButtonText}>New</Text>
+                    <Text style={styles.guidelinesButtonText}>📋 Guidelines</Text>
                 </TouchableOpacity>
             </View>
 
-            <FlatList
-                data={conversations}
-                keyExtractor={(item) => item.id}
-                renderItem={renderConversation}
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyTitle}>No conversations yet</Text>
-                        <Text style={styles.emptyText}>Start a conversation with other parents!</Text>
-                        <TouchableOpacity
-                            style={styles.startButton}
-                            onPress={() => setShowNewMessage(true)}
-                        >
-                            <Text style={styles.startButtonText}>Send First Message</Text>
-                        </TouchableOpacity>
-                    </View>
-                }
-            />
-
-            {/* New Message Modal */}
-            <Modal visible={showNewMessage} animationType="slide">
-                <SafeAreaView style={styles.modalContainer}>
-                    <View style={styles.modalHeader}>
-                        <TouchableOpacity onPress={() => setShowNewMessage(false)}>
-                            <Text style={styles.modalHeaderButton}>Cancel</Text>
-                        </TouchableOpacity>
-                        <Text style={styles.modalHeaderTitle}>New Message</Text>
-                        <View style={styles.modalHeaderButton} />
-                    </View>
-
+            <ScrollView>
+                {/* User Grid */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Community Members</Text>
                     <FlatList
                         data={users}
+                        renderItem={renderUserThumbnail}
                         keyExtractor={(item) => item.id}
-                        renderItem={renderUser}
-                        style={styles.usersList}
+                        numColumns={4}
+                        scrollEnabled={false}
+                        contentContainerStyle={styles.userGrid}
                     />
-                </SafeAreaView>
-            </Modal>
+                </View>
 
-            {/* Conversation Modal */}
-            <Modal visible={!!showConversation} animationType="slide">
-                <SafeAreaView style={styles.conversationModal}>
-                    <View style={styles.conversationHeader}>
-                        <TouchableOpacity onPress={() => setShowConversation(null)}>
+                {/* Recent Messages */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Recent Messages</Text>
+                    {allMessages.length > 0 ? (
+                        <FlatList
+                            data={allMessages}
+                            renderItem={renderMessage}
+                            keyExtractor={(item) => item.id}
+                            scrollEnabled={false}
+                        />
+                    ) : (
+                        <View style={styles.emptyMessages}>
+                            <Text style={styles.emptyText}>No messages yet</Text>
+                            <Text style={styles.emptySubtext}>Tap on a profile above to start a conversation!</Text>
+                        </View>
+                    )}
+                </View>
+            </ScrollView>
+
+            {/* User Profile & Chat Modal */}
+            <Modal visible={!!selectedUser} animationType="slide">
+                <SafeAreaView style={styles.modalContainer}>
+                    <View style={styles.modalHeader}>
+                        <TouchableOpacity onPress={() => setSelectedUser(null)}>
                             <Text style={styles.backButton}>← Back</Text>
                         </TouchableOpacity>
-                        <Text style={styles.conversationTitle}>
-                            {showConversation?.otherUser.displayName}
+                        <Text style={styles.modalTitle}>
+                            {selectedUser?.displayName}
                         </Text>
-                        <View style={styles.backButton} />
+                        <TouchableOpacity onPress={showUserActions}>
+                            <Text style={styles.backButton}>⋯</Text>
+                        </TouchableOpacity>
                     </View>
 
-                    <FlatList
-                        data={messages}
-                        keyExtractor={(item) => item.id}
-                        renderItem={renderMessage}
-                        style={styles.messagesList}
-                    />
+                    <ScrollView style={styles.modalContent}>
+                        {/* User Profile Section */}
+                        {userProfile && (
+                            <View style={styles.profileSection}>
+                                <View style={styles.profileHeader}>
+                                    {userProfile.profileImageUrl ? (
+                                        <Image source={{ uri: userProfile.profileImageUrl }} style={styles.profileImage} />
+                                    ) : (
+                                        <View style={[styles.profileImage, styles.profileImagePlaceholder]}>
+                                            <Text style={styles.profileImageText}>
+                                                {userProfile.displayName.charAt(0).toUpperCase()}
+                                            </Text>
+                                        </View>
+                                    )}
+                                    <Text style={styles.profileName}>{userProfile.displayName}</Text>
+                                    {userProfile.showEmail && <Text style={styles.profileEmail}>{userProfile.email}</Text>}
+                                    {userProfile.showPhone && userProfile.phone && <Text style={styles.profilePhone}>{userProfile.phone}</Text>}
+                                </View>
 
+                                {userProfile.children && userProfile.children.length > 0 && (
+                                    <View style={styles.childrenSection}>
+                                        <Text style={styles.childrenTitle}>Children:</Text>
+                                        {userProfile.children.map((child, index) => (
+                                            <Text key={index} style={styles.childInfo}>
+                                                {child.name} ({child.age}) - {child.daysAttending.join(', ')}
+                                            </Text>
+                                        ))}
+                                    </View>
+                                )}
+                            </View>
+                        )}
+
+                        {/* Messages Section */}
+                        <View style={styles.messagesSection}>
+                            <Text style={styles.messagesSectionTitle}>Messages</Text>
+                            {userMessages.length > 0 ? (
+                                <FlatList
+                                    data={userMessages}
+                                    renderItem={renderUserMessage}
+                                    keyExtractor={(item) => item.id}
+                                    style={styles.chatMessagesList}
+                                    scrollEnabled={false}
+                                />
+                            ) : (
+                                <Text style={styles.noMessagesText}>No messages yet. Start the conversation!</Text>
+                            )}
+                        </View>
+                    </ScrollView>
+
+                    {/* Message Input */}
                     <View style={styles.messageInputContainer}>
                         <TextInput
                             style={styles.messageInput}
@@ -469,12 +606,83 @@ export default function MessagesScreen() {
                         />
                         <TouchableOpacity
                             style={styles.sendButton}
-                            onPress={() => sendMessage()}
+                            onPress={sendMessage}
                         >
                             <Text style={styles.sendButtonText}>Send</Text>
                         </TouchableOpacity>
                     </View>
                 </SafeAreaView>
+            </Modal>
+
+            {/* Report User Modal */}
+            <Modal visible={showReportModal} animationType="slide" transparent={true}>
+                <View style={styles.reportModalOverlay}>
+                    <View style={styles.reportModalContent}>
+                        <Text style={styles.reportModalTitle}>Report User</Text>
+                        <Text style={styles.reportModalSubtitle}>
+                            Help keep our community safe by reporting inappropriate behavior.
+                        </Text>
+
+                        <Text style={styles.reportLabel}>Reason for reporting: *</Text>
+                        <View style={styles.reasonButtons}>
+                            {['Inappropriate content', 'Harassment', 'Spam', 'Safety concern', 'Other'].map((reason) => (
+                                <TouchableOpacity
+                                    key={reason}
+                                    style={[
+                                        styles.reasonButton,
+                                        reportReason === reason && styles.reasonButtonSelected
+                                    ]}
+                                    onPress={() => setReportReason(reason)}
+                                >
+                                    <Text style={[
+                                        styles.reasonButtonText,
+                                        reportReason === reason && styles.reasonButtonTextSelected
+                                    ]}>
+                                        {reason}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <Text style={styles.reportLabel}>Additional details (optional):</Text>
+                        <TextInput
+                            style={styles.reportTextInput}
+                            value={reportDescription}
+                            onChangeText={setReportDescription}
+                            placeholder="Please provide any additional context..."
+                            multiline
+                            numberOfLines={4}
+                        />
+
+                        <View style={styles.reportModalButtons}>
+                            <TouchableOpacity
+                                style={[styles.reportModalButton, styles.reportCancelButton]}
+                                onPress={() => {
+                                    setShowReportModal(false);
+                                    setReportReason('');
+                                    setReportDescription('');
+                                }}
+                            >
+                                <Text style={styles.reportCancelButtonText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.reportModalButton, styles.reportSubmitButton]}
+                                onPress={reportUser}
+                            >
+                                <Text style={styles.reportSubmitButtonText}>Submit Report</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Community Guidelines Modal */}
+            <Modal
+                visible={showGuidelines}
+                animationType="slide"
+                presentationStyle="pageSheet"
+            >
+                <CommunityGuidelinesScreen onClose={() => setShowGuidelines(false)} />
             </Modal>
         </View>
     );
@@ -490,42 +698,65 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 15,
+    section: {
         backgroundColor: '#fff',
-        borderBottomWidth: 1,
-        borderBottomColor: '#e0e0e0',
+        marginBottom: 15,
+        paddingVertical: 15,
     },
-    headerTitle: {
-        fontSize: 20,
+    sectionTitle: {
+        fontSize: 18,
         fontWeight: 'bold',
         color: '#333',
-    },
-    newMessageButton: {
-        backgroundColor: '#2c5f7c',
+        marginBottom: 15,
         paddingHorizontal: 15,
-        paddingVertical: 8,
-        borderRadius: 6,
     },
-    newMessageButtonText: {
+    userGrid: {
+        paddingHorizontal: 15,
+    },
+    userThumbnail: {
+        width: GRID_ITEM_SIZE,
+        alignItems: 'center',
+        marginBottom: 15,
+        marginHorizontal: 5,
+    },
+    thumbnailImage: {
+        width: GRID_ITEM_SIZE - 10,
+        height: GRID_ITEM_SIZE - 10,
+        borderRadius: (GRID_ITEM_SIZE - 10) / 2,
+        marginBottom: 5,
+    },
+    thumbnailPlaceholder: {
+        backgroundColor: '#2c5f7c',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    thumbnailText: {
         color: '#fff',
-        fontWeight: '600',
+        fontSize: 16,
+        fontWeight: 'bold',
     },
-    conversationCard: {
-        flexDirection: 'row',
+    thumbnailName: {
+        fontSize: 12,
+        color: '#666',
+        textAlign: 'center',
+    },
+    messageCard: {
+        backgroundColor: '#f9f9f9',
         padding: 15,
-        backgroundColor: '#fff',
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        marginHorizontal: 15,
+        marginBottom: 10,
+        borderRadius: 8,
     },
-    avatar: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        marginRight: 12,
+    messageHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    messageAvatar: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        marginRight: 10,
     },
     avatarPlaceholder: {
         backgroundColor: '#2c5f7c',
@@ -534,65 +765,41 @@ const styles = StyleSheet.create({
     },
     avatarText: {
         color: '#fff',
-        fontSize: 18,
+        fontSize: 12,
         fontWeight: 'bold',
     },
-    conversationInfo: {
+    messageInfo: {
         flex: 1,
-    },
-    conversationListHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 4,
     },
-    userName: {
-        fontSize: 16,
+    messageSender: {
+        fontSize: 14,
         fontWeight: '600',
         color: '#333',
     },
-    timeText: {
+    messageTime: {
         fontSize: 12,
         color: '#999',
     },
-    lastMessage: {
+    messageText: {
         fontSize: 14,
         color: '#666',
-        marginBottom: 4,
     },
-    childrenInfo: {
-        fontSize: 12,
-        color: '#999',
-        fontStyle: 'italic',
-    },
-    emptyContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
+    emptyMessages: {
         padding: 40,
-    },
-    emptyTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 8,
+        alignItems: 'center',
     },
     emptyText: {
         fontSize: 16,
-        color: '#666',
+        color: '#999',
+        marginBottom: 5,
+    },
+    emptySubtext: {
+        fontSize: 14,
+        color: '#bbb',
         textAlign: 'center',
-        marginBottom: 20,
-    },
-    startButton: {
-        backgroundColor: '#2c5f7c',
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 8,
-    },
-    startButtonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
     },
     modalContainer: {
         flex: 1,
@@ -605,92 +812,128 @@ const styles = StyleSheet.create({
         padding: 15,
         backgroundColor: '#2c5f7c',
     },
-    modalHeaderButton: {
-        color: '#fff',
-        fontSize: 16,
-        width: 60,
-    },
-    modalHeaderTitle: {
-        color: '#fff',
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
-    usersList: {
-        flex: 1,
-    },
-    userCard: {
-        flexDirection: 'row',
-        padding: 15,
-        backgroundColor: '#fff',
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-    },
-    userInfo: {
-        flex: 1,
-    },
-    userEmail: {
-        fontSize: 14,
-        color: '#666',
-        marginBottom: 4,
-    },
-    conversationModal: {
-        flex: 1,
-        backgroundColor: '#f5f5f5',
-    },
-    conversationHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 15,
-        backgroundColor: '#2c5f7c',
-    },
     backButton: {
         color: '#fff',
         fontSize: 16,
         width: 60,
     },
-    conversationTitle: {
+    modalTitle: {
         color: '#fff',
         fontSize: 18,
         fontWeight: 'bold',
     },
-    messagesList: {
+    modalContent: {
         flex: 1,
-        padding: 10,
     },
-    messageContainer: {
+    profileSection: {
+        backgroundColor: '#fff',
+        padding: 20,
+        marginBottom: 15,
+    },
+    profileHeader: {
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    profileImage: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        marginBottom: 10,
+    },
+    profileImagePlaceholder: {
+        backgroundColor: '#2c5f7c',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    profileImageText: {
+        color: '#fff',
+        fontSize: 24,
+        fontWeight: 'bold',
+    },
+    profileName: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 5,
+    },
+    profileEmail: {
+        fontSize: 14,
+        color: '#666',
+        marginBottom: 3,
+    },
+    profilePhone: {
+        fontSize: 14,
+        color: '#666',
+    },
+    childrenSection: {
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+        paddingTop: 15,
+    },
+    childrenTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 8,
+    },
+    childInfo: {
+        fontSize: 14,
+        color: '#666',
+        marginBottom: 5,
+    },
+    messagesSection: {
+        backgroundColor: '#fff',
+        padding: 20,
+        flex: 1,
+    },
+    messagesSectionTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 15,
+    },
+    chatMessagesList: {
+        flex: 1,
+    },
+    chatMessage: {
         maxWidth: '75%',
         marginVertical: 2,
         padding: 10,
         borderRadius: 12,
     },
-    myMessage: {
+    myChatMessage: {
         alignSelf: 'flex-end',
         backgroundColor: '#2c5f7c',
     },
-    otherMessage: {
+    otherChatMessage: {
         alignSelf: 'flex-start',
-        backgroundColor: '#fff',
+        backgroundColor: '#e0e0e0',
     },
-    messageText: {
+    chatMessageText: {
         fontSize: 16,
         marginBottom: 4,
     },
-    myMessageText: {
+    myChatMessageText: {
         color: '#fff',
     },
-    otherMessageText: {
+    otherChatMessageText: {
         color: '#333',
     },
-    messageTime: {
+    chatMessageTime: {
         fontSize: 11,
     },
-    myMessageTime: {
+    myChatMessageTime: {
         color: 'rgba(255,255,255,0.7)',
         textAlign: 'right',
     },
-    otherMessageTime: {
+    otherChatMessageTime: {
         color: '#999',
+    },
+    noMessagesText: {
+        fontSize: 14,
+        color: '#999',
+        textAlign: 'center',
+        fontStyle: 'italic',
     },
     messageInputContainer: {
         flexDirection: 'row',
@@ -718,6 +961,119 @@ const styles = StyleSheet.create({
     },
     sendButtonText: {
         color: '#fff',
+        fontWeight: '600',
+    },
+    reportModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        padding: 20,
+    },
+    reportModalContent: {
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        padding: 20,
+        maxHeight: '80%',
+    },
+    reportModalTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 8,
+    },
+    reportModalSubtitle: {
+        fontSize: 14,
+        color: '#666',
+        marginBottom: 20,
+        lineHeight: 20,
+    },
+    reportLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 10,
+    },
+    reasonButtons: {
+        marginBottom: 20,
+    },
+    reasonButton: {
+        padding: 12,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        marginBottom: 8,
+        backgroundColor: '#fff',
+    },
+    reasonButtonSelected: {
+        backgroundColor: '#2c5f7c',
+        borderColor: '#2c5f7c',
+    },
+    reasonButtonText: {
+        fontSize: 14,
+        color: '#333',
+        textAlign: 'center',
+    },
+    reasonButtonTextSelected: {
+        color: '#fff',
+        fontWeight: '600',
+    },
+    reportTextInput: {
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 14,
+        textAlignVertical: 'top',
+        marginBottom: 20,
+        minHeight: 80,
+    },
+    reportModalButtons: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    reportModalButton: {
+        flex: 1,
+        padding: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    reportCancelButton: {
+        backgroundColor: '#f0f0f0',
+    },
+    reportCancelButtonText: {
+        color: '#666',
+        fontWeight: '600',
+    },
+    reportSubmitButton: {
+        backgroundColor: '#d32f2f',
+    },
+    reportSubmitButtonText: {
+        color: '#fff',
+        fontWeight: '600',
+    },
+    headerBar: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 15,
+        backgroundColor: '#2c5f7c',
+        borderBottomWidth: 1,
+        borderBottomColor: '#e0e0e0',
+    },
+    headerTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#fff',
+    },
+    guidelinesButton: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 15,
+    },
+    guidelinesButtonText: {
+        color: '#fff',
+        fontSize: 12,
         fontWeight: '600',
     },
 });

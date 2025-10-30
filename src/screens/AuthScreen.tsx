@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image, ScrollView, Dimensions } from 'react-native';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../firebase.config';
+
+const { width } = Dimensions.get('window');
 
 export default function AuthScreen() {
     const [email, setEmail] = useState('');
@@ -22,61 +24,84 @@ export default function AuthScreen() {
     };
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Blue Heron Rookery</Text>
-            <Text style={styles.subtitle}>Parent Community App</Text>
-
-            <TextInput
-                style={styles.input}
-                placeholder="Email"
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
+        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+            <Image
+                source={require('../../assets/auth-header.png')}
+                style={styles.headerImage}
+                resizeMode="cover"
             />
 
-            <TextInput
-                style={styles.input}
-                placeholder="Password"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-            />
-
-            <TouchableOpacity style={styles.button} onPress={handleAuth}>
-                <Text style={styles.buttonText}>
-                    {isSignUp ? 'Sign Up' : 'Sign In'}
+            <View style={styles.content}>
+                <Text style={styles.title}>Blue Heron Rookery</Text>
+                <Text style={styles.subtitle}>
+                    Welcome to Blue Heron Rookery, an app to build community among Blue Heron Montessori School families in Bellingham, WA. I'm envisioning it as a place for us to make friends, hand-down toys and clothes, possibly arrange ride-sharing, and make playdates outside of school. Feel free to post about yourself without worrying that you are spamming anyone's email or phone. Let's get to know each-other! ~Rhys Smoker (Skye's dad)
                 </Text>
-            </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
-                <Text style={styles.switchText}>
-                    {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-                </Text>
-            </TouchableOpacity>
-        </View>
+                <TextInput
+                    style={styles.input}
+                    placeholder="Email"
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                />
+
+                <TextInput
+                    style={styles.input}
+                    placeholder="Password"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                />
+
+                <TouchableOpacity style={styles.button} onPress={handleAuth}>
+                    <Text style={styles.buttonText}>
+                        {isSignUp ? 'Sign Up' : 'Sign In'}
+                    </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
+                    <Text style={styles.switchText}>
+                        {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+                    </Text>
+                </TouchableOpacity>
+            </View>
+        </ScrollView>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        justifyContent: 'center',
-        padding: 20,
         backgroundColor: '#fff',
+    },
+    contentContainer: {
+        flexGrow: 1,
+    },
+    headerImage: {
+        width: width,
+        height: width,
+        alignSelf: 'center',
+    },
+    content: {
+        padding: 20,
+        flex: 1,
+        justifyContent: 'center',
     },
     title: {
         fontSize: 28,
         fontWeight: 'bold',
         textAlign: 'center',
-        marginBottom: 8,
+        marginBottom: 15,
         color: '#2c5f7c',
     },
     subtitle: {
-        fontSize: 16,
+        fontSize: 15,
         textAlign: 'center',
-        marginBottom: 40,
+        marginBottom: 30,
         color: '#666',
+        lineHeight: 22,
+        paddingHorizontal: 10,
     },
     input: {
         borderWidth: 1,

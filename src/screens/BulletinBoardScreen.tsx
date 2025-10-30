@@ -34,6 +34,8 @@ export default function BulletinBoardScreen() {
     const [comments, setComments] = useState<Comment[]>([]);
     const [commentText, setCommentText] = useState('');
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    const [reportingPost, setReportingPost] = useState<Post | null>(null);
+    const [reportReason, setReportReason] = useState('');
 
     useEffect(() => {
         const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
@@ -146,6 +148,32 @@ export default function BulletinBoardScreen() {
             });
         } catch (error: any) {
             Alert.alert('Error', error.message);
+        }
+    };
+
+    const handleReport = async (post: Post, reason: string) => {
+        const userId = auth.currentUser?.uid;
+        if (!userId) return;
+
+        try {
+            await addDoc(collection(db, 'reports'), {
+                reportedContentId: post.id,
+                reportedContentType: 'post',
+                reportedByUserId: userId,
+                reportedUserId: post.userId,
+                reason: reason,
+                description: `Post content: "${post.text.substring(0, 100)}..."`,
+                timestamp: serverTimestamp(),
+                status: 'pending'
+            });
+
+            Alert.alert(
+                'Report Submitted',
+                'Thank you for helping keep our community safe. We will review this report.',
+                [{ text: 'OK', onPress: () => setReportingPost(null) }]
+            );
+        } catch (error: any) {
+            Alert.alert('Error', 'Failed to submit report. Please try again.');
         }
     };
 
@@ -307,6 +335,15 @@ export default function BulletinBoardScreen() {
                                 </Text>
                             </TouchableOpacity>
 
+                            {!isMyPost(item.userId) && (
+                                <TouchableOpacity
+                                    style={styles.actionButton}
+                                    onPress={() => setReportingPost(item)}
+                                >
+                                    <Text style={styles.actionText}>🚩 Report</Text>
+                                </TouchableOpacity>
+                            )}
+
                             {isMyPost(item.userId) && (
                                 <>
                                     <TouchableOpacity
@@ -425,6 +462,64 @@ export default function BulletinBoardScreen() {
                         </View>
                     </View>
                 </SafeAreaView>
+            </Modal>
+
+            {/* Report Modal */}
+            <Modal visible={!!reportingPost} animationType="slide" transparent={true}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Report Post</Text>
+                        <Text style={styles.reportSubtitle}>
+                            Why are you reporting this post?
+                        </Text>
+
+                        <View style={styles.reportReasonsContainer}>
+                            {[
+                                'Inappropriate content',
+                                'Harassment or bullying',
+                                'Spam or advertising',
+                                'False information',
+                                'Privacy violation',
+                                'Other'
+                            ].map((reason) => (
+                                <TouchableOpacity
+                                    key={reason}
+                                    style={[
+                                        styles.reportReasonButton,
+                                        reportReason === reason && styles.reportReasonSelected
+                                    ]}
+                                    onPress={() => setReportReason(reason)}
+                                >
+                                    <Text style={[
+                                        styles.reportReasonText,
+                                        reportReason === reason && styles.reportReasonTextSelected
+                                    ]}>
+                                        {reason}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity
+                                style={[styles.reportModalButton, styles.cancelButton]}
+                                onPress={() => {
+                                    setReportingPost(null);
+                                    setReportReason('');
+                                }}
+                            >
+                                <Text style={styles.cancelButtonText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.reportModalButton, styles.confirmButton]}
+                                onPress={() => reportingPost && reportReason && handleReport(reportingPost, reportReason)}
+                                disabled={!reportReason}
+                            >
+                                <Text style={styles.confirmButtonText}>Submit Report</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
             </Modal>
         </View>
     );
@@ -728,6 +823,53 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     commentButtonText: {
+        color: '#fff',
+        fontWeight: '600',
+    },
+    reportSubtitle: {
+        fontSize: 16,
+        color: '#666',
+        marginBottom: 20,
+        textAlign: 'center',
+    },
+    reportReasonsContainer: {
+        marginBottom: 20,
+    },
+    reportReasonButton: {
+        padding: 15,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        marginBottom: 10,
+        backgroundColor: '#fff',
+    },
+    reportReasonSelected: {
+        backgroundColor: '#2c5f7c',
+        borderColor: '#2c5f7c',
+    },
+    reportReasonText: {
+        fontSize: 16,
+        color: '#333',
+        textAlign: 'center',
+    },
+    reportReasonTextSelected: {
+        color: '#fff',
+        fontWeight: '600',
+    },
+    modalActions: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    reportModalButton: {
+        flex: 1,
+        padding: 15,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    confirmButton: {
+        backgroundColor: '#d32f2f',
+    },
+    confirmButtonText: {
         color: '#fff',
         fontWeight: '600',
     },
