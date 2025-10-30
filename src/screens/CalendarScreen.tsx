@@ -314,16 +314,6 @@ export default function CalendarScreen() {
                         const isCreator = (event.createdBy && event.createdBy === auth.currentUser?.uid) || 
                                         (event.createdByEmail && event.createdByEmail === auth.currentUser?.email);
                         
-                        // Debug logging to help troubleshoot
-                        console.log('Event:', event.title);
-                        console.log('  event.createdBy:', event.createdBy);
-                        console.log('  event.createdByEmail:', event.createdByEmail);
-                        console.log('  currentUser.uid:', auth.currentUser?.uid);
-                        console.log('  currentUser.email:', auth.currentUser?.email);
-                        console.log('  UID match:', event.createdBy === auth.currentUser?.uid);
-                        console.log('  Email match:', event.createdByEmail === auth.currentUser?.email);
-                        console.log('  isCreator:', isCreator);
-                        
                         return (
                             <View key={event.id} style={styles.eventCard}>
                                 <TouchableOpacity
@@ -347,6 +337,11 @@ export default function CalendarScreen() {
                                             by {event.createdByEmail}
                                         </Text>
                                     </View>
+                                    
+                                    {/* DEBUG: Show ownership check status */}
+                                    <Text style={{fontSize: 10, color: 'red', marginTop: 5}}>
+                                        DEBUG: isCreator={isCreator.toString()} | currentUID={auth.currentUser?.uid} | currentEmail={auth.currentUser?.email}
+                                    </Text>
                                 </TouchableOpacity>
                                 
                                 {/* Edit and Delete buttons for event creator */}
@@ -365,6 +360,13 @@ export default function CalendarScreen() {
                                             <Text style={[styles.eventCardActionText, styles.deleteActionText]}>🗑️ Delete</Text>
                                         </TouchableOpacity>
                                     </View>
+                                )}
+                                
+                                {/* DEBUG: Show if not creator */}
+                                {!isCreator && (
+                                    <Text style={{fontSize: 10, color: 'orange', marginTop: 5, padding: 10}}>
+                                        DEBUG: Buttons hidden - not creator
+                                    </Text>
                                 )}
                             </View>
                         );
