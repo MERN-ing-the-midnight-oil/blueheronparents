@@ -310,8 +310,9 @@ export default function CalendarScreen() {
                     </View>
                 ) : (
                     events.map(event => {
-                        // TEMPORARY: Show buttons for ALL users to test rendering
-                        const isCreator = true; // TESTING - was: (event.createdBy && event.createdBy === auth.currentUser?.uid) || (event.createdByEmail && event.createdByEmail === auth.currentUser?.email);
+                        // Check if user is the creator - handle both UID and email comparison
+                        const isCreator = (event.createdBy && event.createdBy === auth.currentUser?.uid) || 
+                                        (event.createdByEmail && event.createdByEmail === auth.currentUser?.email);
                         
                         return (
                             <View key={event.id} style={styles.eventCard}>
@@ -338,21 +339,23 @@ export default function CalendarScreen() {
                                     </View>
                                 </TouchableOpacity>
                                 
-                                {/* TESTING: Buttons shown for ALL events temporarily */}
-                                <View style={styles.eventCardActions}>
-                                    <TouchableOpacity
-                                        style={styles.eventCardActionButton}
-                                        onPress={() => handleEdit(event)}
-                                    >
-                                        <Text style={styles.eventCardActionText}>✏️ Edit</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={styles.eventCardActionButton}
-                                        onPress={() => handleDelete(event.id)}
-                                    >
-                                        <Text style={[styles.eventCardActionText, styles.deleteActionText]}>🗑️ Delete</Text>
-                                    </TouchableOpacity>
-                                </View>
+                                {/* Edit and Delete buttons for event creator */}
+                                {isCreator && (
+                                    <View style={styles.eventCardActions}>
+                                        <TouchableOpacity
+                                            style={styles.eventCardActionButton}
+                                            onPress={() => handleEdit(event)}
+                                        >
+                                            <Text style={styles.eventCardActionText}>✏️ Edit</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={styles.eventCardActionButton}
+                                            onPress={() => handleDelete(event.id)}
+                                        >
+                                            <Text style={[styles.eventCardActionText, styles.deleteActionText]}>🗑️ Delete</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
                             </View>
                         );
                     })
