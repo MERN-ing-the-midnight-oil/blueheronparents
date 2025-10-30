@@ -314,6 +314,14 @@ export default function CalendarScreen() {
                         const isCreator = event.createdBy === auth.currentUser?.uid || 
                                         (!event.createdBy && event.createdByEmail === auth.currentUser?.email);
                         
+                        // Debug logging to help troubleshoot
+                        console.log('Event:', event.title);
+                        console.log('  event.createdBy:', event.createdBy);
+                        console.log('  event.createdByEmail:', event.createdByEmail);
+                        console.log('  currentUser.uid:', auth.currentUser?.uid);
+                        console.log('  currentUser.email:', auth.currentUser?.email);
+                        console.log('  isCreator:', isCreator);
+                        
                         return (
                             <View key={event.id} style={styles.eventCard}>
                                 <TouchableOpacity
