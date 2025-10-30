@@ -310,9 +310,9 @@ export default function CalendarScreen() {
                     </View>
                 ) : (
                     events.map(event => {
-                        // Check if user is the creator - handle both createdBy (new) and userId (legacy) fields
-                        const isCreator = event.createdBy === auth.currentUser?.uid || 
-                                        (!event.createdBy && event.createdByEmail === auth.currentUser?.email);
+                        // Check if user is the creator - handle both UID and email comparison
+                        const isCreator = (event.createdBy && event.createdBy === auth.currentUser?.uid) || 
+                                        (event.createdByEmail && event.createdByEmail === auth.currentUser?.email);
                         
                         // Debug logging to help troubleshoot
                         console.log('Event:', event.title);
@@ -320,6 +320,8 @@ export default function CalendarScreen() {
                         console.log('  event.createdByEmail:', event.createdByEmail);
                         console.log('  currentUser.uid:', auth.currentUser?.uid);
                         console.log('  currentUser.email:', auth.currentUser?.email);
+                        console.log('  UID match:', event.createdBy === auth.currentUser?.uid);
+                        console.log('  Email match:', event.createdByEmail === auth.currentUser?.email);
                         console.log('  isCreator:', isCreator);
                         
                         return (
@@ -621,8 +623,8 @@ export default function CalendarScreen() {
                             </Text>
 
                             {/* Edit and Delete buttons for event creator */}
-                            {(selectedEvent.createdBy === auth.currentUser?.uid || 
-                              (!selectedEvent.createdBy && selectedEvent.createdByEmail === auth.currentUser?.email)) && (
+                            {((selectedEvent.createdBy && selectedEvent.createdBy === auth.currentUser?.uid) || 
+                              (selectedEvent.createdByEmail && selectedEvent.createdByEmail === auth.currentUser?.email)) && (
                                 <View style={styles.creatorActions}>
                                     <TouchableOpacity
                                         style={styles.editEventButton}
