@@ -6,6 +6,7 @@ import BulletinBoardScreen from '../screens/BulletinBoardScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -52,10 +53,24 @@ export default function AppNavigator() {
                 name="Profile"
                 component={ProfileScreen}
                 options={{
-                    tabBarButton: () => null, // This hides the tab button
-                    tabBarStyle: { display: 'none' }, // Optional: hides entire tab bar on Profile screen
+                    tabBarButton: () => null,
                 }}
             />
+            <Tab.Screen
+                name="EditProfile"
+                options={{
+                    title: 'Edit Profile',
+                    tabBarButton: () => null,
+                }}
+            >
+                {(props) => (
+                    <ProfileSetupScreen
+                        {...props}
+                        editMode={true}
+                        onComplete={() => props.navigation.goBack()}
+                    />
+                )}
+            </Tab.Screen>
         </Tab.Navigator>
     );
 }

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert } fr
 import { doc, getDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../../firebase.config';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 interface Child {
     name: string;
@@ -22,12 +23,16 @@ interface UserProfile {
 }
 
 export default function ProfileScreen() {
+    const navigation = useNavigation();
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        loadProfile();
-    }, []);
+    // Reload profile when screen comes into focus
+    useFocusEffect(
+        React.useCallback(() => {
+            loadProfile();
+        }, [])
+    );
 
     const loadProfile = async () => {
         try {
@@ -42,6 +47,10 @@ export default function ProfileScreen() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleEditProfile = () => {
+        (navigation as any).navigate('EditProfile');
     };
 
     const handleSignOut = () => {
@@ -136,7 +145,7 @@ export default function ProfileScreen() {
                 </View>
             )}
 
-            <TouchableOpacity style={styles.editButton}>
+            <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
                 <Text style={styles.editButtonText}>Edit Profile</Text>
             </TouchableOpacity>
 

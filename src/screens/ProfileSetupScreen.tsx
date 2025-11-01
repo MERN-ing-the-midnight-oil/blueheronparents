@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image, Switch } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage } from '../../firebase.config';
 
@@ -13,11 +13,12 @@ interface Child {
 
 interface ProfileSetupScreenProps {
     onComplete: () => void;
+    editMode?: boolean;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
-export default function ProfileSetupScreen({ onComplete }: ProfileSetupScreenProps) {
+export default function ProfileSetupScreen({ onComplete, editMode = false }: ProfileSetupScreenProps) {
     const [displayName, setDisplayName] = useState('');
     const [phone, setPhone] = useState('');
     const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -25,6 +26,31 @@ export default function ProfileSetupScreen({ onComplete }: ProfileSetupScreenPro
     const [showEmail, setShowEmail] = useState(true);
     const [showPhone, setShowPhone] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (editMode) {
+            loadExistingProfile();
+        }
+    }, [editMode]);
+
+    const loadExistingProfile = async () => {
+        try {
+            const docRef = doc(db, 'users', auth.currentUser!.uid);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setDisplayName(data.displayName || '');
+                setPhone(data.phone || '');
+                setProfileImage(data.profileImageUrl || null);
+                setChildren(data.children?.length > 0 ? data.children : [{ name: '', age: '', daysAttending: [] }]);
+                setShowEmail(data.showEmail ?? true);
+                setShowPhone(data.showPhone ?? false);
+            }
+        } catch (error: any) {
+            Alert.alert('Error', 'Failed to load profile');
+        }
+    };
 
     const pickImage = async () => {
         const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -47,6 +73,11 @@ export default function ProfileSetupScreen({ onComplete }: ProfileSetupScreenPro
     };
 
     const uploadProfileImage = async (uri: string) => {
+        // Skip upload if it's already a URL (existing image)
+        if (uri.startsWith('http')) {
+            return uri;
+        }
+
         const response = await fetch(uri);
         const blob = await response.blob();
 
@@ -105,13 +136,18 @@ export default function ProfileSetupScreen({ onComplete }: ProfileSetupScreenPro
                 children: children.filter(c => c.name.trim()),
                 showEmail,
                 showPhone,
-                createdAt: new Date(),
+                updatedAt: new Date(),
                 profileComplete: true,
             };
 
-            await setDoc(doc(db, 'users', auth.currentUser!.uid), profileData);
+            // Only add createdAt if it's not edit mode
+            if (!editMode) {
+                (profileData as any).createdAt = new Date();
+            }
 
-            Alert.alert('Success', 'Profile created!');
+            await setDoc(doc(db, 'users', auth.currentUser!.uid), profileData, { merge: true });
+
+            Alert.alert('Success', editMode ? 'Profile updated!' : 'Profile created!');
             onComplete();
         } catch (error: any) {
             Alert.alert('Error', error.message);
@@ -123,8 +159,12 @@ export default function ProfileSetupScreen({ onComplete }: ProfileSetupScreenPro
     return (
         <ScrollView style={styles.container}>
             <View style={styles.content}>
-                <Text style={styles.title}>Complete Your Profile</Text>
-                <Text style={styles.subtitle}>Help other parents get to know you!</Text>
+                <Text style={styles.title}>
+                    {editMode ? 'Edit Your Profile' : 'Complete Your Profile'}
+                </Text>
+                <Text style={styles.subtitle}>
+                    {editMode ? 'Update your information' : 'Help other parents get to know you!'}
+                </Text>
 
                 <TouchableOpacity style={styles.imagePickerContainer} onPress={pickImage}>
                     {profileImage ? (
@@ -231,13 +271,15 @@ export default function ProfileSetupScreen({ onComplete }: ProfileSetupScreenPro
                     disabled={loading}
                 >
                     <Text style={styles.saveButtonText}>
-                        {loading ? 'Saving...' : 'Complete Profile'}
+                        {loading ? 'Saving...' : (editMode ? 'Save Changes' : 'Complete Profile')}
                     </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity onPress={onComplete} style={styles.skipButton}>
-                    <Text style={styles.skipButtonText}>Skip for now</Text>
-                </TouchableOpacity>
+                {!editMode && (
+                    <TouchableOpacity onPress={onComplete} style={styles.skipButton}>
+                        <Text style={styles.skipButtonText}>Skip for now</Text>
+                    </TouchableOpacity>
+                )}
             </View>
         </ScrollView>
     );
