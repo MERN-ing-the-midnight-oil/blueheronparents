@@ -8,8 +8,10 @@ import {
     Modal,
     Alert,
     ScrollView,
+    Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../../firebase.config';
 import EmailVerificationBanner from '../components/EmailVerificationBanner';
@@ -27,14 +29,16 @@ interface CalendarEvent {
 
 export default function CalendarScreen() {
     const [events, setEvents] = useState<CalendarEvent[]>([]);
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
     const [isModalVisible, setIsModalVisible] = useState(false);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [showTimePicker, setShowTimePicker] = useState(false);
+    const [isFormExpanded, setIsFormExpanded] = useState(false);
 
     const [newEvent, setNewEvent] = useState({
         title: '',
-        date: new Date().toISOString().split('T')[0],
-        time: '',
+        date: new Date(),
+        time: new Date(),
         description: '',
         location: '',
     });
@@ -49,7 +53,6 @@ export default function CalendarScreen() {
             snapshot.docs.forEach((docSnap) => {
                 const data = docSnap.data();
 
-                // Explicitly convert everything to strings, ignore timestamps
                 eventsData.push({
                     id: docSnap.id,
                     title: String(data.title || ''),
@@ -75,7 +78,33 @@ export default function CalendarScreen() {
         const userEmail = user.email?.toLowerCase().trim();
         const eventEmail = event.createdByEmail?.toLowerCase().trim();
 
-        return event.createdBy === user.uid || (userEmail && eventEmail && userEmail === eventEmail);
+        return event.createdBy === user.uid || Boolean(userEmail && eventEmail && userEmail === eventEmail);
+    };
+
+    const formatDate = (date: Date): string => {
+        return date.toISOString().split('T')[0];
+    };
+
+    const formatTime = (date: Date): string => {
+        return date.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+    };
+
+    const handleDateChange = (event: any, selectedDate?: Date) => {
+        setShowDatePicker(Platform.OS === 'ios');
+        if (selectedDate) {
+            setNewEvent({ ...newEvent, date: selectedDate });
+        }
+    };
+
+    const handleTimeChange = (event: any, selectedTime?: Date) => {
+        setShowTimePicker(Platform.OS === 'ios');
+        if (selectedTime) {
+            setNewEvent({ ...newEvent, time: selectedTime });
+        }
     };
 
     const handleCreateEvent = async () => {
@@ -84,16 +113,16 @@ export default function CalendarScreen() {
             return;
         }
 
-        if (!newEvent.title || !newEvent.date || !newEvent.time) {
-            Alert.alert('Missing Information', 'Please fill in all required fields');
+        if (!newEvent.title.trim()) {
+            Alert.alert('Missing Information', 'Please enter an event title');
             return;
         }
 
         try {
             await addDoc(collection(db, 'events'), {
                 title: newEvent.title,
-                date: newEvent.date,
-                time: newEvent.time,
+                date: formatDate(newEvent.date),
+                time: formatTime(newEvent.time),
                 description: newEvent.description,
                 location: newEvent.location,
                 createdBy: auth.currentUser?.uid || '',
@@ -102,12 +131,13 @@ export default function CalendarScreen() {
 
             setNewEvent({
                 title: '',
-                date: new Date().toISOString().split('T')[0],
-                time: '',
+                date: new Date(),
+                time: new Date(),
                 description: '',
                 location: '',
             });
 
+            setIsFormExpanded(false);
             Alert.alert('Success', 'Event created successfully!');
         } catch (error) {
             console.error('Error creating event:', error);
@@ -141,7 +171,17 @@ export default function CalendarScreen() {
         );
     };
 
-    const filteredEvents = events.filter((event) => event.date === selectedDate);
+    // Group events by date
+    const groupedEvents = events.reduce((groups, event) => {
+        const date = event.date;
+        if (!groups[date]) {
+            groups[date] = [];
+        }
+        groups[date].push(event);
+        return groups;
+    }, {} as Record<string, CalendarEvent[]>);
+
+    const sortedDates = Object.keys(groupedEvents).sort();
 
     return (
         <View style={styles.container}>
@@ -151,104 +191,142 @@ export default function CalendarScreen() {
                 <Text style={styles.header}>Community Calendar</Text>
 
                 <View style={styles.createEventSection}>
-                    <Text style={styles.sectionTitle}>Create New Event</Text>
-
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Event Title"
-                        value={newEvent.title}
-                        onChangeText={(text) => setNewEvent({ ...newEvent, title: text })}
-                    />
-
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Date (YYYY-MM-DD)"
-                        value={newEvent.date}
-                        onChangeText={(text) => setNewEvent({ ...newEvent, date: text })}
-                    />
-
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Time (e.g., 3:00 PM)"
-                        value={newEvent.time}
-                        onChangeText={(text) => setNewEvent({ ...newEvent, time: text })}
-                    />
-
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Location"
-                        value={newEvent.location}
-                        onChangeText={(text) => setNewEvent({ ...newEvent, location: text })}
-                    />
-
-                    <TextInput
-                        style={[styles.input, styles.textArea]}
-                        placeholder="Description"
-                        value={newEvent.description}
-                        onChangeText={(text) => setNewEvent({ ...newEvent, description: text })}
-                        multiline
-                        numberOfLines={4}
-                    />
-
-                    <TouchableOpacity style={styles.createButton} onPress={handleCreateEvent}>
-                        <Text style={styles.createButtonText}>Create Event</Text>
+                    <TouchableOpacity
+                        style={styles.formHeader}
+                        onPress={() => setIsFormExpanded(!isFormExpanded)}
+                    >
+                        <Text style={styles.sectionTitle}>Create New Event</Text>
+                        <Ionicons
+                            name={isFormExpanded ? "chevron-up" : "chevron-down"}
+                            size={24}
+                            color="#333"
+                        />
                     </TouchableOpacity>
+
+                    {isFormExpanded && (
+                        <View style={styles.formContent}>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Event Title *"
+                                value={newEvent.title}
+                                onChangeText={(text) => setNewEvent({ ...newEvent, title: text })}
+                            />
+
+                            <TouchableOpacity
+                                style={styles.dateButton}
+                                onPress={() => setShowDatePicker(true)}
+                            >
+                                <Ionicons name="calendar-outline" size={20} color="#2196F3" />
+                                <Text style={styles.dateButtonText}>
+                                    {formatDate(newEvent.date)}
+                                </Text>
+                            </TouchableOpacity>
+
+                            {showDatePicker && (
+                                <DateTimePicker
+                                    value={newEvent.date}
+                                    mode="date"
+                                    display="default"
+                                    onChange={handleDateChange}
+                                    minimumDate={new Date()}
+                                />
+                            )}
+
+                            <TouchableOpacity
+                                style={styles.dateButton}
+                                onPress={() => setShowTimePicker(true)}
+                            >
+                                <Ionicons name="time-outline" size={20} color="#2196F3" />
+                                <Text style={styles.dateButtonText}>
+                                    {formatTime(newEvent.time)}
+                                </Text>
+                            </TouchableOpacity>
+
+                            {showTimePicker && (
+                                <DateTimePicker
+                                    value={newEvent.time}
+                                    mode="time"
+                                    display="default"
+                                    onChange={handleTimeChange}
+                                />
+                            )}
+
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Location"
+                                value={newEvent.location}
+                                onChangeText={(text) => setNewEvent({ ...newEvent, location: text })}
+                            />
+
+                            <TextInput
+                                style={[styles.input, styles.textArea]}
+                                placeholder="Description"
+                                value={newEvent.description}
+                                onChangeText={(text) => setNewEvent({ ...newEvent, description: text })}
+                                multiline
+                                numberOfLines={4}
+                            />
+
+                            <TouchableOpacity style={styles.createButton} onPress={handleCreateEvent}>
+                                <Text style={styles.createButtonText}>Create Event</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
                 </View>
 
                 <View style={styles.eventsSection}>
-                    <Text style={styles.sectionTitle}>Select Date</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Date (YYYY-MM-DD)"
-                        value={selectedDate}
-                        onChangeText={setSelectedDate}
-                    />
+                    <Text style={styles.sectionTitle}>Upcoming Events</Text>
 
-                    <Text style={styles.sectionTitle}>
-                        Events on {new Date(selectedDate).toLocaleDateString()}
-                    </Text>
-
-                    {filteredEvents.length === 0 ? (
-                        <Text style={styles.noEvents}>No events for this date</Text>
+                    {sortedDates.length === 0 ? (
+                        <Text style={styles.noEvents}>No upcoming events</Text>
                     ) : (
-                        <View>
-                            {filteredEvents.map((event) => {
-                                const owner = isEventOwner(event);
+                        sortedDates.map((date) => (
+                            <View key={date} style={styles.dateGroup}>
+                                <Text style={styles.dateGroupHeader}>
+                                    {new Date(date).toLocaleDateString('en-US', {
+                                        weekday: 'long',
+                                        year: 'numeric',
+                                        month: 'long',
+                                        day: 'numeric'
+                                    })}
+                                </Text>
+                                {groupedEvents[date].map((event) => {
+                                    const owner = isEventOwner(event);
 
-                                return (
-                                    <TouchableOpacity
-                                        key={event.id}
-                                        style={styles.eventCard}
-                                        onPress={() => {
-                                            setSelectedEvent(event);
-                                            setIsModalVisible(true);
-                                        }}
-                                    >
-                                        <View style={styles.eventHeader}>
-                                            <View>
-                                                <Text style={styles.eventTime}>{event.time}</Text>
-                                                <Text style={styles.eventDate}>{new Date(event.date).toLocaleDateString()}</Text>
+                                    return (
+                                        <TouchableOpacity
+                                            key={event.id}
+                                            style={styles.eventCard}
+                                            onPress={() => {
+                                                setSelectedEvent(event);
+                                                setIsModalVisible(true);
+                                            }}
+                                        >
+                                            <View style={styles.eventHeader}>
+                                                <View>
+                                                    <Text style={styles.eventTime}>{event.time}</Text>
+                                                </View>
+                                                {owner && (
+                                                    <TouchableOpacity
+                                                        onPress={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteEvent(event);
+                                                        }}
+                                                        style={styles.headerActionsRow}
+                                                    >
+                                                        <Ionicons name="trash-outline" size={20} color="#666" />
+                                                    </TouchableOpacity>
+                                                )}
                                             </View>
-                                            {owner && (
-                                                <TouchableOpacity
-                                                    onPress={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDeleteEvent(event);
-                                                    }}
-                                                    style={styles.headerActionsRow}
-                                                >
-                                                    <Ionicons name="trash-outline" size={20} color="#666" />
-                                                </TouchableOpacity>
-                                            )}
-                                        </View>
-                                        <Text style={styles.eventTitle}>{event.title}</Text>
-                                        {event.location !== '' && <Text style={styles.eventLocation}>📍 {event.location}</Text>}
-                                        {event.description !== '' && <Text style={styles.eventDescription}>{event.description}</Text>}
-                                        <Text style={styles.eventCreator}>by {event.createdByEmail}</Text>
-                                    </TouchableOpacity>
-                                );
-                            })}
-                        </View>
+                                            <Text style={styles.eventTitle}>{event.title}</Text>
+                                            {event.location !== '' && <Text style={styles.eventLocation}>📍 {event.location}</Text>}
+                                            {event.description !== '' && <Text style={styles.eventDescription}>{event.description}</Text>}
+                                            <Text style={styles.eventCreator}>by {event.createdByEmail}</Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        ))
                     )}
                 </View>
             </ScrollView>
@@ -310,8 +388,19 @@ const styles = StyleSheet.create({
     },
     createEventSection: {
         backgroundColor: 'white',
-        padding: 20,
         marginBottom: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: '#ddd',
+    },
+    formHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 20,
+    },
+    formContent: {
+        paddingHorizontal: 20,
+        paddingBottom: 20,
     },
     eventsSection: {
         backgroundColor: 'white',
@@ -320,8 +409,17 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        marginBottom: 15,
         color: '#333',
+    },
+    dateGroup: {
+        marginBottom: 20,
+    },
+    dateGroupHeader: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#2196F3',
+        marginBottom: 10,
+        marginTop: 10,
     },
     input: {
         borderWidth: 1,
@@ -330,6 +428,21 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         marginBottom: 10,
         fontSize: 16,
+    },
+    dateButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#ddd',
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 10,
+        backgroundColor: '#f9f9f9',
+    },
+    dateButtonText: {
+        fontSize: 16,
+        marginLeft: 10,
+        color: '#333',
     },
     textArea: {
         height: 100,
@@ -368,11 +481,6 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: 'bold',
         color: '#2196F3',
-    },
-    eventDate: {
-        fontSize: 12,
-        color: '#666',
-        marginTop: 2,
     },
     eventTitle: {
         fontSize: 18,
