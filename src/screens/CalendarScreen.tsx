@@ -12,9 +12,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, getDocs } from 'firebase/firestore';
 import { db, auth } from '../../firebase.config';
 import EmailVerificationBanner from '../components/EmailVerificationBanner';
+import { sendNotificationToUsers } from '../utils/notifications';
 
 interface CalendarEvent {
     id: string;
@@ -119,15 +120,41 @@ export default function CalendarScreen() {
         }
 
         try {
+            const eventDate = formatDate(newEvent.date);
+            const eventTime = formatTime(newEvent.time);
+
             await addDoc(collection(db, 'events'), {
                 title: newEvent.title,
-                date: formatDate(newEvent.date),
-                time: formatTime(newEvent.time),
+                date: eventDate,
+                time: eventTime,
                 description: newEvent.description,
                 location: newEvent.location,
                 createdBy: auth.currentUser?.uid || '',
                 createdByEmail: auth.currentUser?.email || '',
             });
+
+            // Send notifications to all other users
+            const usersSnapshot = await getDocs(collection(db, 'users'));
+            const userIds = usersSnapshot.docs
+                .map(doc => doc.id)
+                .filter(id => id !== auth.currentUser?.uid);
+
+            const formattedDate = new Date(newEvent.date).toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric'
+            });
+
+            const notificationBody = newEvent.location
+                ? `${formattedDate} at ${eventTime} • ${newEvent.location}`
+                : `${formattedDate} at ${eventTime}`;
+
+            await sendNotificationToUsers(
+                userIds,
+                `New Event: ${newEvent.title}`,
+                notificationBody,
+                'calendar'
+            );
 
             setNewEvent({
                 title: '',
@@ -188,19 +215,22 @@ export default function CalendarScreen() {
             {!isEmailVerified && <EmailVerificationBanner />}
 
             <ScrollView style={styles.scrollView}>
-                <Text style={styles.header}>Community Calendar</Text>
-
                 <View style={styles.createEventSection}>
                     <TouchableOpacity
                         style={styles.formHeader}
                         onPress={() => setIsFormExpanded(!isFormExpanded)}
                     >
-                        <Text style={styles.sectionTitle}>Create New Event</Text>
-                        <Ionicons
-                            name={isFormExpanded ? "chevron-up" : "chevron-down"}
-                            size={24}
-                            color="#333"
-                        />
+                        <View style={styles.createButtonRow}>
+                            <View style={styles.createButtonContent}>
+                                <Text style={styles.createButtonEmoji}>➕</Text>
+                                <Text style={styles.createHeaderText}>Create New Event</Text>
+                            </View>
+                            <Ionicons
+                                name={isFormExpanded ? "chevron-up" : "chevron-down"}
+                                size={24}
+                                color="#2c5f7c"
+                            />
+                        </View>
                     </TouchableOpacity>
 
                     {isFormExpanded && (
@@ -379,13 +409,6 @@ const styles = StyleSheet.create({
     scrollView: {
         flex: 1,
     },
-    header: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        padding: 20,
-        backgroundColor: '#2196F3',
-        color: 'white',
-    },
     createEventSection: {
         backgroundColor: 'white',
         marginBottom: 20,
@@ -393,10 +416,33 @@ const styles = StyleSheet.create({
         borderBottomColor: '#ddd',
     },
     formHeader: {
+        padding: 15,
+        backgroundColor: '#f0f8ff',
+        borderRadius: 10,
+        margin: 15,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    createButtonRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: 20,
+    },
+    createButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    createButtonEmoji: {
+        fontSize: 24,
+        marginRight: 10,
+    },
+    createHeaderText: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#2c5f7c',
     },
     formContent: {
         paddingHorizontal: 20,

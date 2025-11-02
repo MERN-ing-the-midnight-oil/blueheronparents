@@ -26,6 +26,7 @@ import {
     updateDoc
 } from 'firebase/firestore';
 import { db, auth } from '../../firebase.config';
+import { sendNotificationToUsers } from '../utils/notifications';
 
 interface User {
     id: string;
@@ -251,6 +252,18 @@ export default function MessagesScreen() {
                 lastMessageTime: serverTimestamp(),
                 lastMessageSender: auth.currentUser!.uid
             });
+
+            // Send notification to recipient
+            const previewText = messageText.length > 50 ? messageText.substring(0, 50) + '...' : messageText;
+            const senderDoc = await getDoc(doc(db, 'users', auth.currentUser!.uid));
+            const senderName = senderDoc.exists() ? senderDoc.data().displayName : auth.currentUser?.email?.split('@')[0];
+
+            await sendNotificationToUsers(
+                [showConversation.otherUser.id],
+                `Message from ${senderName}`,
+                previewText,
+                'messages'
+            );
 
             setMessageText('');
         } catch (error: any) {
@@ -480,6 +493,7 @@ export default function MessagesScreen() {
     );
 }
 
+// ...existing styles remain the same...
 const styles = StyleSheet.create({
     container: {
         flex: 1,

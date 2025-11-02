@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Alert, Modal, Image, SafeAreaView } from 'react-native';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import { db, auth, storage } from '../../firebase.config';
+import { sendNotificationToUsers } from '../utils/notifications';
 
 interface Comment {
     id: string;
@@ -123,6 +124,20 @@ export default function BulletinBoardScreen() {
                 const imageUrl = await uploadImage(selectedImage, docRef.id);
                 await updateDoc(docRef, { imageUrl });
             }
+
+            // Send notifications to all other users
+            const usersSnapshot = await getDocs(collection(db, 'users'));
+            const userIds = usersSnapshot.docs
+                .map(doc => doc.id)
+                .filter(id => id !== auth.currentUser?.uid);
+
+            const previewText = postText.length > 50 ? postText.substring(0, 50) + '...' : postText;
+            await sendNotificationToUsers(
+                userIds,
+                'New Nest Note',
+                `${auth.currentUser?.email?.split('@')[0]} posted: ${previewText || '📷 shared a photo'}`,
+                'nestNotes'
+            );
 
             setPostText('');
             setSelectedImage(null);
@@ -430,6 +445,7 @@ export default function BulletinBoardScreen() {
     );
 }
 
+// ...existing styles remain the same...
 const styles = StyleSheet.create({
     container: {
         flex: 1,
