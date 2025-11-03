@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "701219621793",
+    "project_id": "blue-heron-rookery",
+    "storage_bucket": "blue-heron-rookery.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:701219621793:android:03f10c097d751cafe359e0",
+        "android_client_info": {
+          "package_name": "com.rhyssmoker.blueheronparents"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD7umrTZtTLLbguscHlIA8HVY1qwPtHPZY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
