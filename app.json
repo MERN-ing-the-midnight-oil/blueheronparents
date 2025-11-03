@@ -40,23 +40,22 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "This app needs access to your photo library so you can share photos in posts and update your profile picture.",
-          "cameraPermission": "This app needs access to your camera so you can take photos to share in posts and update your profile picture."
-        }
-      ],
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png",
-          "color": "#2c5f7c",
-          "sounds": [],
-          "mode": "production"
-        }
-      ]
-    ],
+  [
+    "expo-image-picker",
+    {
+      "photosPermission": "This app needs access to your photo library so you can share photos in posts and update your profile picture.",
+      "cameraPermission": "This app needs access to your camera so you can take photos to share in posts and update your profile picture."
+    }
+  ],
+  [
+    "expo-notifications",
+    {
+      "color": "#2c5f7c",
+      "sounds": [],
+      "mode": "production"
+    }
+  ]
+],
     "extra": {
       "eas": {
         "projectId": "819868e1-e12c-44d2-b3b0-a909e4794728"
