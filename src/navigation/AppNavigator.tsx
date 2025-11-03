@@ -30,8 +30,8 @@ export default function AppNavigator() {
                 name="Board"
                 component={BulletinBoardScreen}
                 options={({ navigation }) => ({
-                    title: 'Nest Notes',
-                    tabBarLabel: 'Nest Notes',
+                    title: 'Nest News',
+                    tabBarLabel: 'Nest News',
                     headerRight: () => (
                         <View style={{ flexDirection: 'row', marginRight: 15 }}>
                             <TouchableOpacity

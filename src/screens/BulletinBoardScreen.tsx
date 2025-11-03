@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Alert, M
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { db, auth, storage } from '../../firebase.config';
 import { sendNotificationToUsers } from '../utils/notifications';
 
@@ -70,6 +71,29 @@ export default function BulletinBoardScreen() {
         return unsubscribe;
     }, [viewingComments]);
 
+    const compressImage = async (uri: string): Promise<string> => {
+        try {
+            // Compress and resize image
+            const manipulateResult = await ImageManipulator.manipulateAsync(
+                uri,
+                [
+                    // Resize if image is too large (max 1200px width)
+                    { resize: { width: 1200 } }
+                ],
+                {
+                    compress: 0.7, // 70% quality - good balance
+                    format: ImageManipulator.SaveFormat.JPEG,
+                }
+            );
+
+            console.log('Image compressed successfully');
+            return manipulateResult.uri;
+        } catch (error) {
+            console.error('Image compression failed:', error);
+            return uri; // Return original if compression fails
+        }
+    };
+
     const pickImage = async () => {
         const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -82,23 +106,39 @@ export default function BulletinBoardScreen() {
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: true,
             aspect: [4, 3],
-            quality: 0.7,
+            quality: 0.8, // Initial quality
         });
 
         if (!result.canceled) {
-            setSelectedImage(result.assets[0].uri);
+            // Compress the image
+            try {
+                const compressedImage = await compressImage(result.assets[0].uri);
+                setSelectedImage(compressedImage);
+            } catch (error) {
+                console.error('Error compressing image:', error);
+                // Fallback to original if compression fails
+                setSelectedImage(result.assets[0].uri);
+            }
         }
     };
 
     const uploadImage = async (uri: string, postId: string) => {
-        const response = await fetch(uri);
-        const blob = await response.blob();
+        try {
+            const response = await fetch(uri);
+            const blob = await response.blob();
 
-        const storageRef = ref(storage, `posts/${postId}/${Date.now()}.jpg`);
-        await uploadBytes(storageRef, blob);
+            // Log the blob size for debugging
+            console.log(`Uploading image: ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
 
-        const downloadURL = await getDownloadURL(storageRef);
-        return downloadURL;
+            const storageRef = ref(storage, `posts/${postId}/${Date.now()}.jpg`);
+            await uploadBytes(storageRef, blob);
+
+            const downloadURL = await getDownloadURL(storageRef);
+            return downloadURL;
+        } catch (error) {
+            console.error('Error uploading image:', error);
+            throw error;
+        }
     };
 
     const handlePost = async () => {
@@ -278,7 +318,7 @@ export default function BulletinBoardScreen() {
                         onPress={handlePost}
                         disabled={loading}
                     >
-                        <Text style={styles.postButtonText}>Post</Text>
+                        <Text style={styles.postButtonText}>{loading ? 'Posting...' : 'Post'}</Text>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -445,7 +485,6 @@ export default function BulletinBoardScreen() {
     );
 }
 
-// ...existing styles remain the same...
 const styles = StyleSheet.create({
     container: {
         flex: 1,

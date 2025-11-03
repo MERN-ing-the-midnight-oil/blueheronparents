@@ -75,7 +75,7 @@ export default function SettingsScreen() {
 
                 <View style={styles.settingRow}>
                     <View style={styles.settingInfo}>
-                        <Text style={styles.settingLabel}>Nest Notes</Text>
+                        <Text style={styles.settingLabel}>Nest News</Text>
                         <Text style={styles.settingDescription}>
                             New posts on the bulletin board
                         </Text>

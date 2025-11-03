@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "blueheronparents",
+    "name": "Blue Heron Parents",
     "slug": "blueheronparents",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,30 +9,51 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#2c5f7c"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.blueheronparents"
+      "bundleIdentifier": "com.rhyssmoker.blueheronparents",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library so you can share photos in posts and update your profile picture.",
+        "NSCameraUsageDescription": "This app needs access to your camera so you can take photos to share in posts and update your profile picture.",
+        "NSPhotoLibraryAddUsageDescription": "This app needs access to save photos to your library.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#2c5f7c"
       },
-      "package": "com.yourcompany.blueheronparents",
-      "googleServicesFile": "./google-services.json"
+      "package": "com.rhyssmoker.blueheronparents",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app needs access to your photo library so you can share photos in posts and update your profile picture.",
+          "cameraPermission": "This app needs access to your camera so you can take photos to share in posts and update your profile picture."
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
           "color": "#2c5f7c",
-          "sounds": []
+          "sounds": [],
+          "mode": "production"
         }
       ]
     ],
@@ -41,6 +62,8 @@
         "projectId": "819868e1-e12c-44d2-b3b0-a909e4794728"
       }
     },
-    "owner": "rhyssmoker"
+    "owner": "rhyssmoker",
+    "description": "A private communication app for Blue Heron School parents to connect, share updates, and coordinate events.",
+    "primaryColor": "#2c5f7c"
   }
 }
