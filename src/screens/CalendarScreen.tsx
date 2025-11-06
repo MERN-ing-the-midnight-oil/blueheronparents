@@ -3,7 +3,7 @@ import {
     View,
     Text,
     TextInput,
-    TouchableOpacity,
+    Pressable,
     StyleSheet,
     Modal,
     Alert,
@@ -216,7 +216,7 @@ export default function CalendarScreen() {
 
             <ScrollView style={styles.scrollView}>
                 <View style={styles.createEventSection}>
-                    <TouchableOpacity
+                    <Pressable
                         style={styles.formHeader}
                         onPress={() => setIsFormExpanded(!isFormExpanded)}
                     >
@@ -231,7 +231,7 @@ export default function CalendarScreen() {
                                 color="#2c5f7c"
                             />
                         </View>
-                    </TouchableOpacity>
+                    </Pressable>
 
                     {isFormExpanded && (
                         <View style={styles.formContent}>
@@ -242,7 +242,7 @@ export default function CalendarScreen() {
                                 onChangeText={(text) => setNewEvent({ ...newEvent, title: text })}
                             />
 
-                            <TouchableOpacity
+                            <Pressable
                                 style={styles.dateButton}
                                 onPress={() => setShowDatePicker(true)}
                             >
@@ -250,7 +250,7 @@ export default function CalendarScreen() {
                                 <Text style={styles.dateButtonText}>
                                     {formatDate(newEvent.date)}
                                 </Text>
-                            </TouchableOpacity>
+                            </Pressable>
 
                             {showDatePicker && (
                                 <DateTimePicker
@@ -262,7 +262,7 @@ export default function CalendarScreen() {
                                 />
                             )}
 
-                            <TouchableOpacity
+                            <Pressable
                                 style={styles.dateButton}
                                 onPress={() => setShowTimePicker(true)}
                             >
@@ -270,7 +270,7 @@ export default function CalendarScreen() {
                                 <Text style={styles.dateButtonText}>
                                     {formatTime(newEvent.time)}
                                 </Text>
-                            </TouchableOpacity>
+                            </Pressable>
 
                             {showTimePicker && (
                                 <DateTimePicker
@@ -297,9 +297,9 @@ export default function CalendarScreen() {
                                 numberOfLines={4}
                             />
 
-                            <TouchableOpacity style={styles.createButton} onPress={handleCreateEvent}>
+                            <Pressable style={styles.createButton} onPress={handleCreateEvent}>
                                 <Text style={styles.createButtonText}>Create Event</Text>
-                            </TouchableOpacity>
+                            </Pressable>
                         </View>
                     )}
                 </View>
@@ -324,7 +324,7 @@ export default function CalendarScreen() {
                                     const owner = isEventOwner(event);
 
                                     return (
-                                        <TouchableOpacity
+                                        <Pressable
                                             key={event.id}
                                             style={styles.eventCard}
                                             onPress={() => {
@@ -337,7 +337,7 @@ export default function CalendarScreen() {
                                                     <Text style={styles.eventTime}>{event.time}</Text>
                                                 </View>
                                                 {owner && (
-                                                    <TouchableOpacity
+                                                    <Pressable
                                                         onPress={(e) => {
                                                             e.stopPropagation();
                                                             handleDeleteEvent(event);
@@ -345,14 +345,14 @@ export default function CalendarScreen() {
                                                         style={styles.headerActionsRow}
                                                     >
                                                         <Ionicons name="trash-outline" size={20} color="#666" />
-                                                    </TouchableOpacity>
+                                                    </Pressable>
                                                 )}
                                             </View>
                                             <Text style={styles.eventTitle}>{event.title}</Text>
                                             {event.location !== '' && <Text style={styles.eventLocation}>📍 {event.location}</Text>}
                                             {event.description !== '' && <Text style={styles.eventDescription}>{event.description}</Text>}
                                             <Text style={styles.eventCreator}>by {event.createdByEmail}</Text>
-                                        </TouchableOpacity>
+                                        </Pressable>
                                     );
                                 })}
                             </View>
@@ -380,18 +380,18 @@ export default function CalendarScreen() {
 
                                 {isEventOwner(selectedEvent) && (
                                     <View style={styles.modalActionRow}>
-                                        <TouchableOpacity
+                                        <Pressable
                                             onPress={() => handleDeleteEvent(selectedEvent)}
                                             style={styles.deleteIconButton}
                                         >
                                             <Ionicons name="trash-outline" size={24} color="#666" />
-                                        </TouchableOpacity>
+                                        </Pressable>
                                     </View>
                                 )}
 
-                                <TouchableOpacity style={styles.closeButton} onPress={() => setIsModalVisible(false)}>
+                                <Pressable style={styles.closeButton} onPress={() => setIsModalVisible(false)}>
                                     <Text style={styles.closeButtonText}>Close</Text>
-                                </TouchableOpacity>
+                                </Pressable>
                             </>
                         )}
                     </View>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
 import { sendEmailVerification, signOut } from 'firebase/auth';
 import { auth } from '../../firebase.config';
 
@@ -46,15 +46,14 @@ export default function EmailVerificationBanner() {
             <Text style={styles.bannerText}>
                 ⚠️ Please verify your email to create events
             </Text>
-            <TouchableOpacity
-                onPress={handleResendVerification}
-                disabled={sending}
+            <Pressable
                 style={styles.resendButton}
+                onPress={handleResendVerification}
             >
                 <Text style={styles.resendButtonText}>
-                    {sending ? 'Sending...' : 'Send Verification Email'}
+                    {sending ? 'Sending...' : 'Resend Verification Email'}
                 </Text>
-            </TouchableOpacity>
+            </Pressable>
         </View>
     );
 }

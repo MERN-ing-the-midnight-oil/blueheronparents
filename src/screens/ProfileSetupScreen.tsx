@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image, Switch } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Alert, Image, Switch } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -166,7 +166,7 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
                     {editMode ? 'Update your information' : 'Help other parents get to know you!'}
                 </Text>
 
-                <TouchableOpacity style={styles.imagePickerContainer} onPress={pickImage}>
+                <Pressable style={styles.imagePickerContainer} onPress={pickImage}>
                     {profileImage ? (
                         <Image source={{ uri: profileImage }} style={styles.profileImage} />
                     ) : (
@@ -175,7 +175,7 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
                             <Text style={styles.imagePlaceholderSubtext}>Add Photo</Text>
                         </View>
                     )}
-                </TouchableOpacity>
+                </Pressable>
 
                 <Text style={styles.label}>Your Name *</Text>
                 <TextInput
@@ -216,9 +216,9 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
                             <View style={styles.childHeader}>
                                 <Text style={styles.childNumber}>Child {index + 1}</Text>
                                 {children.length > 1 && (
-                                    <TouchableOpacity onPress={() => removeChild(index)}>
+                                    <Pressable onPress={() => removeChild(index)}>
                                         <Text style={styles.removeButton}>Remove</Text>
-                                    </TouchableOpacity>
+                                    </Pressable>
                                 )}
                             </View>
 
@@ -240,7 +240,7 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
                             <Text style={styles.daysLabel}>Days attending:</Text>
                             <View style={styles.daysContainer}>
                                 {DAYS.map(day => (
-                                    <TouchableOpacity
+                                    <Pressable
                                         key={day}
                                         style={[
                                             styles.dayButton,
@@ -254,18 +254,18 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
                                         ]}>
                                             {day.substring(0, 3)}
                                         </Text>
-                                    </TouchableOpacity>
+                                    </Pressable>
                                 ))}
                             </View>
                         </View>
                     ))}
 
-                    <TouchableOpacity style={styles.addChildButton} onPress={addChild}>
+                    <Pressable style={styles.addChildButton} onPress={addChild}>
                         <Text style={styles.addChildButtonText}>+ Add Another Child</Text>
-                    </TouchableOpacity>
+                    </Pressable>
                 </View>
 
-                <TouchableOpacity
+                <Pressable
                     style={[styles.saveButton, loading && styles.saveButtonDisabled]}
                     onPress={handleSave}
                     disabled={loading}
@@ -273,12 +273,12 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
                     <Text style={styles.saveButtonText}>
                         {loading ? 'Saving...' : (editMode ? 'Save Changes' : 'Complete Profile')}
                     </Text>
-                </TouchableOpacity>
+                </Pressable>
 
                 {!editMode && (
-                    <TouchableOpacity onPress={onComplete} style={styles.skipButton}>
+                    <Pressable onPress={onComplete} style={styles.skipButton}>
                         <Text style={styles.skipButtonText}>Skip for now</Text>
-                    </TouchableOpacity>
+                    </Pressable>
                 )}
             </View>
         </ScrollView>

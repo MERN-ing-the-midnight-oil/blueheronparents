@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Image, Alert } from 'react-native';
 import { doc, getDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../../firebase.config';
@@ -145,13 +145,13 @@ export default function ProfileScreen() {
                 </View>
             )}
 
-            <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
+            <Pressable style={styles.editButton} onPress={handleEditProfile}>
                 <Text style={styles.editButtonText}>Edit Profile</Text>
-            </TouchableOpacity>
+            </Pressable>
 
-            <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+            <Pressable style={styles.signOutButton} onPress={handleSignOut}>
                 <Text style={styles.signOutButtonText}>Sign Out</Text>
-            </TouchableOpacity>
+            </Pressable>
         </ScrollView>
     );
 }

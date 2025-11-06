@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Alert } from 'react-native';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../firebase.config';
 
@@ -43,17 +43,17 @@ export default function AuthScreen() {
                 secureTextEntry
             />
 
-            <TouchableOpacity style={styles.button} onPress={handleAuth}>
+            <Pressable style={styles.button} onPress={handleAuth}>
                 <Text style={styles.buttonText}>
                     {isSignUp ? 'Sign Up' : 'Sign In'}
                 </Text>
-            </TouchableOpacity>
+            </Pressable>
 
-            <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
+            <Pressable onPress={() => setIsSignUp(!isSignUp)}>
                 <Text style={styles.switchText}>
                     {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
                 </Text>
-            </TouchableOpacity>
+            </Pressable>
         </View>
     );
 }

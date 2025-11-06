@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Alert, Modal, Image, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, FlatList, Alert, Modal, Image, SafeAreaView } from 'react-native';
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -41,12 +41,21 @@ export default function BulletinBoardScreen() {
         const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const postsData = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                likes: doc.data().likes || [],
-            } as Post));
-            setPosts(postsData);
+            try {
+                const postsData = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    likes: doc.data().likes || [],
+                } as Post));
+                setPosts(postsData);
+            } catch (error) {
+                console.error('Error processing posts snapshot:', error);
+                // Don't crash - keep existing posts
+            }
+        }, (error) => {
+            console.error('Posts listener error:', error);
+            // Don't crash - app continues with empty posts
+            setPosts([]);
         });
 
         return unsubscribe;
@@ -73,15 +82,15 @@ export default function BulletinBoardScreen() {
 
     const compressImage = async (uri: string): Promise<string> => {
         try {
-            // Compress and resize image
+            // More aggressive compression for iPad Air 5th gen compatibility
             const manipulateResult = await ImageManipulator.manipulateAsync(
                 uri,
                 [
-                    // Resize if image is too large (max 1200px width)
-                    { resize: { width: 1200 } }
+                    // Smaller max width for older iPad hardware
+                    { resize: { width: 800 } }
                 ],
                 {
-                    compress: 0.7, // 70% quality - good balance
+                    compress: 0.5, // More aggressive compression
                     format: ImageManipulator.SaveFormat.JPEG,
                 }
             );
@@ -90,7 +99,9 @@ export default function BulletinBoardScreen() {
             return manipulateResult.uri;
         } catch (error) {
             console.error('Image compression failed:', error);
-            return uri; // Return original if compression fails
+            // Return original but log warning for debugging
+            console.warn('Using original image - may cause memory issues on older devices');
+            return uri;
         }
     };
 
@@ -296,30 +307,30 @@ export default function BulletinBoardScreen() {
                 {selectedImage && (
                     <View style={styles.imagePreviewContainer}>
                         <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
-                        <TouchableOpacity
+                        <Pressable
                             style={styles.removeImageButton}
                             onPress={() => setSelectedImage(null)}
                         >
                             <Text style={styles.removeImageText}>✕</Text>
-                        </TouchableOpacity>
+                        </Pressable>
                     </View>
                 )}
 
                 <View style={styles.postActionsRow}>
-                    <TouchableOpacity
+                    <Pressable
                         style={styles.photoButton}
                         onPress={pickImage}
                     >
                         <Text style={styles.photoButtonText}>📷 Photo</Text>
-                    </TouchableOpacity>
+                    </Pressable>
 
-                    <TouchableOpacity
+                    <Pressable
                         style={[styles.postButton, loading && styles.postButtonDisabled]}
                         onPress={handlePost}
                         disabled={loading}
                     >
                         <Text style={styles.postButtonText}>{loading ? 'Posting...' : 'Post'}</Text>
-                    </TouchableOpacity>
+                    </Pressable>
                 </View>
             </View>
 
@@ -344,39 +355,39 @@ export default function BulletinBoardScreen() {
                         )}
 
                         <View style={styles.actionsRow}>
-                            <TouchableOpacity
+                            <Pressable
                                 style={styles.actionButton}
                                 onPress={() => handleLike(item)}
                             >
                                 <Text style={styles.actionText}>
                                     {item.likes?.includes(auth.currentUser?.uid || '') ? '❤️' : '🤍'} {item.likes?.length || 0}
                                 </Text>
-                            </TouchableOpacity>
+                            </Pressable>
 
-                            <TouchableOpacity
+                            <Pressable
                                 style={styles.actionButton}
                                 onPress={() => setViewingComments(item)}
                             >
                                 <Text style={styles.actionText}>
                                     💬 {item.commentCount || 0}
                                 </Text>
-                            </TouchableOpacity>
+                            </Pressable>
 
                             {isMyPost(item.userId) && (
                                 <>
-                                    <TouchableOpacity
+                                    <Pressable
                                         style={styles.actionButton}
                                         onPress={() => handleEdit(item)}
                                     >
                                         <Text style={styles.actionText}>✏️ Edit</Text>
-                                    </TouchableOpacity>
+                                    </Pressable>
 
-                                    <TouchableOpacity
+                                    <Pressable
                                         style={styles.actionButton}
                                         onPress={() => handleDelete(item.id)}
                                     >
                                         <Text style={[styles.actionText, styles.deleteText]}>🗑️ Delete</Text>
-                                    </TouchableOpacity>
+                                    </Pressable>
                                 </>
                             )}
                         </View>
@@ -402,18 +413,18 @@ export default function BulletinBoardScreen() {
                             maxLength={500}
                         />
                         <View style={styles.modalButtons}>
-                            <TouchableOpacity
+                            <Pressable
                                 style={[styles.modalButton, styles.cancelButton]}
                                 onPress={() => setEditingPost(null)}
                             >
                                 <Text style={styles.cancelButtonText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
+                            </Pressable>
+                            <Pressable
                                 style={[styles.modalButton, styles.saveButton]}
                                 onPress={handleUpdate}
                             >
                                 <Text style={styles.saveButtonText}>Save</Text>
-                            </TouchableOpacity>
+                            </Pressable>
                         </View>
                     </View>
                 </View>
@@ -425,13 +436,13 @@ export default function BulletinBoardScreen() {
                     <View style={styles.commentsContainer}>
                         <View style={styles.commentsHeader}>
                             <Text style={styles.commentsTitle}>Comments</Text>
-                            <TouchableOpacity
+                            <Pressable
                                 onPress={() => setViewingComments(null)}
                                 style={styles.closeButtonContainer}
                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                             >
                                 <Text style={styles.closeButton}>✕</Text>
-                            </TouchableOpacity>
+                            </Pressable>
                         </View>
 
                         <View style={styles.originalPost}>
@@ -471,12 +482,12 @@ export default function BulletinBoardScreen() {
                                 onChangeText={setCommentText}
                                 multiline
                             />
-                            <TouchableOpacity
+                            <Pressable
                                 style={styles.commentButton}
                                 onPress={handleComment}
                             >
                                 <Text style={styles.commentButtonText}>Send</Text>
-                            </TouchableOpacity>
+                            </Pressable>
                         </View>
                     </View>
                 </SafeAreaView>

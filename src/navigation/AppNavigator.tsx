@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { TouchableOpacity, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import BulletinBoardScreen from '../screens/BulletinBoardScreen';
 import MessagesScreen from '../screens/MessagesScreen';
@@ -34,17 +34,17 @@ export default function AppNavigator() {
                     tabBarLabel: 'Nest News',
                     headerRight: () => (
                         <View style={{ flexDirection: 'row', marginRight: 15 }}>
-                            <TouchableOpacity
+                            <Pressable
                                 onPress={() => navigation.navigate('Settings')}
                                 style={{ marginRight: 15 }}
                             >
                                 <Ionicons name="settings-outline" size={28} color="#fff" />
-                            </TouchableOpacity>
-                            <TouchableOpacity
+                            </Pressable>
+                            <Pressable
                                 onPress={() => navigation.navigate('Profile')}
                             >
                                 <Ionicons name="person-circle-outline" size={32} color="#fff" />
-                            </TouchableOpacity>
+                            </Pressable>
                         </View>
                     ),
                 })}

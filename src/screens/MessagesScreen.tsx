@@ -4,7 +4,7 @@ import {
     Text,
     StyleSheet,
     FlatList,
-    TouchableOpacity,
+    Pressable,
     TextInput,
     Alert,
     Modal,
@@ -291,7 +291,7 @@ export default function MessagesScreen() {
     };
 
     const renderConversation = ({ item }: { item: ConversationWithUser }) => (
-        <TouchableOpacity
+        <Pressable
             style={styles.conversationCard}
             onPress={() => setShowConversation(item)}
         >
@@ -319,7 +319,7 @@ export default function MessagesScreen() {
                     </Text>
                 )}
             </View>
-        </TouchableOpacity>
+        </Pressable>
     );
 
     const startConversation = async (otherUserId: string) => {
@@ -354,7 +354,7 @@ export default function MessagesScreen() {
     };
 
     const renderUser = ({ item }: { item: User }) => (
-        <TouchableOpacity
+        <Pressable
             style={styles.userCard}
             onPress={() => startConversation(item.id)}
         >
@@ -377,7 +377,7 @@ export default function MessagesScreen() {
                     </Text>
                 )}
             </View>
-        </TouchableOpacity>
+        </Pressable>
     );
 
     const renderMessage = ({ item }: { item: Message }) => {
@@ -406,12 +406,12 @@ export default function MessagesScreen() {
         <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Messages</Text>
-                <TouchableOpacity
+                <Pressable
                     style={styles.newMessageButton}
                     onPress={() => setShowNewMessage(true)}
                 >
                     <Text style={styles.newMessageButtonText}>New</Text>
-                </TouchableOpacity>
+                </Pressable>
             </View>
 
             <FlatList
@@ -422,12 +422,12 @@ export default function MessagesScreen() {
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyTitle}>No conversations yet</Text>
                         <Text style={styles.emptyText}>Start a conversation with other parents!</Text>
-                        <TouchableOpacity
+                        <Pressable
                             style={styles.startButton}
                             onPress={() => setShowNewMessage(true)}
                         >
                             <Text style={styles.startButtonText}>Send First Message</Text>
-                        </TouchableOpacity>
+                        </Pressable>
                     </View>
                 }
             />
@@ -436,9 +436,9 @@ export default function MessagesScreen() {
             <Modal visible={showNewMessage} animationType="slide">
                 <SafeAreaView style={styles.modalContainer}>
                     <View style={styles.modalHeader}>
-                        <TouchableOpacity onPress={() => setShowNewMessage(false)}>
+                        <Pressable onPress={() => setShowNewMessage(false)}>
                             <Text style={styles.modalHeaderButton}>Cancel</Text>
-                        </TouchableOpacity>
+                        </Pressable>
                         <Text style={styles.modalHeaderTitle}>New Message</Text>
                         <View style={styles.modalHeaderButton} />
                     </View>
@@ -456,9 +456,9 @@ export default function MessagesScreen() {
             <Modal visible={!!showConversation} animationType="slide">
                 <SafeAreaView style={styles.conversationModal}>
                     <View style={styles.conversationHeader}>
-                        <TouchableOpacity onPress={() => setShowConversation(null)}>
+                        <Pressable onPress={() => setShowConversation(null)}>
                             <Text style={styles.backButton}>← Back</Text>
-                        </TouchableOpacity>
+                        </Pressable>
                         <Text style={styles.conversationTitle}>
                             {showConversation?.otherUser.displayName}
                         </Text>
@@ -480,12 +480,12 @@ export default function MessagesScreen() {
                             placeholder="Type a message..."
                             multiline
                         />
-                        <TouchableOpacity
+                        <Pressable
                             style={styles.sendButton}
                             onPress={() => sendMessage()}
                         >
                             <Text style={styles.sendButtonText}>Send</Text>
-                        </TouchableOpacity>
+                        </Pressable>
                     </View>
                 </SafeAreaView>
             </Modal>

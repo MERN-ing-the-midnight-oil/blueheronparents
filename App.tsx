@@ -1,3 +1,4 @@
+import 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -6,9 +7,40 @@ import { auth, db } from './firebase.config';
 import AppNavigator from './src/navigation/AppNavigator';
 import AuthScreen from './src/screens/AuthScreen';
 import ProfileSetupScreen from './src/screens/ProfileSetupScreen';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { registerForPushNotificationsAsync } from './src/utils/notifications';
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error?: Error }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 10 }}>Something went wrong</Text>
+          <Text style={{ textAlign: 'center', marginBottom: 20 }}>
+            The app encountered an unexpected error. Please restart the app.
+          </Text>
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -25,19 +57,26 @@ export default function App() {
         // Register for push notifications when user logs in
         registerForPushNotificationsAsync();
 
-        // Check if profile is complete
+        // Check if profile is complete with timeout
         try {
           const docRef = doc(db, 'users', currentUser.uid);
-          const docSnap = await getDoc(docRef);
+
+          // Add timeout wrapper for Firebase operations
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Firebase operation timeout')), 10000)
+          );
+
+          const docSnap = await Promise.race([getDoc(docRef), timeoutPromise]);
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            setProfileComplete(data.profileComplete || false);
+            setProfileComplete(data?.profileComplete || false);
           } else {
             setProfileComplete(false);
           }
         } catch (error) {
           console.error('Error checking profile:', error);
+          // On timeout or error, default to false but don't crash
           setProfileComplete(false);
         }
       }
@@ -72,35 +111,43 @@ export default function App() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2c5f7c" />
-      </View>
+      <ErrorBoundary>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2c5f7c" />
+        </View>
+      </ErrorBoundary>
     );
   }
 
   // Not logged in - show auth screen
   if (!user) {
     return (
-      <NavigationContainer>
-        <AuthScreen />
-      </NavigationContainer>
+      <ErrorBoundary>
+        <NavigationContainer>
+          <AuthScreen />
+        </NavigationContainer>
+      </ErrorBoundary>
     );
   }
 
   // Logged in but profile not complete - show profile setup
   if (!profileComplete) {
     return (
-      <NavigationContainer>
-        <ProfileSetupScreen onComplete={handleProfileComplete} />
-      </NavigationContainer>
+      <ErrorBoundary>
+        <NavigationContainer>
+          <ProfileSetupScreen onComplete={handleProfileComplete} />
+        </NavigationContainer>
+      </ErrorBoundary>
     );
   }
 
   // Logged in and profile complete - show main app
   return (
-    <NavigationContainer>
-      <AppNavigator />
-    </NavigationContainer>
+    <ErrorBoundary>
+      <NavigationContainer>
+        <AppNavigator />
+      </NavigationContainer>
+    </ErrorBoundary>
   );
 }
 
