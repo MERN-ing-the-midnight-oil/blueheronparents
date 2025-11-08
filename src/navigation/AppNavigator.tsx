@@ -11,6 +11,31 @@ import SettingsScreen from '../screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
 
+const HeaderShortcuts = ({ navigation }: { navigation: any }) => (
+    <View style={{ flexDirection: 'row', marginRight: 15 }}>
+        <Pressable
+            onPress={() => navigation.navigate('Settings')}
+            style={{ marginRight: 15 }}
+        >
+            <Ionicons name="settings-outline" size={28} color="#fff" />
+        </Pressable>
+        <Pressable
+            onPress={() => navigation.navigate('Profile')}
+        >
+            <Ionicons name="person-circle-outline" size={32} color="#fff" />
+        </Pressable>
+    </View>
+);
+
+const HeaderHomeButton = ({ navigation }: { navigation: any }) => (
+    <Pressable
+        onPress={() => navigation.navigate('Board')}
+        style={{ marginLeft: 15 }}
+    >
+        <Ionicons name="home-outline" size={28} color="#fff" />
+    </Pressable>
+);
+
 export default function AppNavigator() {
     return (
         <Tab.Navigator
@@ -32,34 +57,26 @@ export default function AppNavigator() {
                 options={({ navigation }) => ({
                     title: 'Nest News',
                     tabBarLabel: 'Nest News',
-                    headerRight: () => (
-                        <View style={{ flexDirection: 'row', marginRight: 15 }}>
-                            <Pressable
-                                onPress={() => navigation.navigate('Settings')}
-                                style={{ marginRight: 15 }}
-                            >
-                                <Ionicons name="settings-outline" size={28} color="#fff" />
-                            </Pressable>
-                            <Pressable
-                                onPress={() => navigation.navigate('Profile')}
-                            >
-                                <Ionicons name="person-circle-outline" size={32} color="#fff" />
-                            </Pressable>
-                        </View>
-                    ),
+                    headerRight: () => <HeaderShortcuts navigation={navigation} />,
                 })}
             />
             <Tab.Screen
                 name="Messages"
                 component={MessagesScreen}
+                options={({ navigation }) => ({
+                    headerRight: () => <HeaderShortcuts navigation={navigation} />,
+                    headerLeft: () => <HeaderHomeButton navigation={navigation} />,
+                })}
             />
             <Tab.Screen
                 name="Calendar"
                 component={CalendarScreen}
-                options={{
+                options={({ navigation }) => ({
                     title: 'Cawlendar',
                     tabBarLabel: 'Cawlendar',
-                }}
+                    headerRight: () => <HeaderShortcuts navigation={navigation} />,
+                    headerLeft: () => <HeaderHomeButton navigation={navigation} />,
+                })}
             />
             <Tab.Screen
                 name="Profile"
