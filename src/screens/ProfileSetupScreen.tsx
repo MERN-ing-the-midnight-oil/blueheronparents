@@ -7,8 +7,10 @@ import { db, auth, storage } from '../../firebase.config';
 
 interface Child {
     name: string;
-    age: string;
+    birthYear: string;
+    birthMonth: string;
     daysAttending: string[];
+    age?: string; // legacy support
 }
 
 interface ProfileSetupScreenProps {
@@ -22,7 +24,7 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
     const [displayName, setDisplayName] = useState('');
     const [phone, setPhone] = useState('');
     const [profileImage, setProfileImage] = useState<string | null>(null);
-    const [children, setChildren] = useState<Child[]>([{ name: '', age: '', daysAttending: [] }]);
+    const [children, setChildren] = useState<Child[]>([{ name: '', birthYear: '', birthMonth: '', daysAttending: [] }]);
     const [showEmail, setShowEmail] = useState(true);
     const [showPhone, setShowPhone] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -43,7 +45,18 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
                 setDisplayName(data.displayName || '');
                 setPhone(data.phone || '');
                 setProfileImage(data.profileImageUrl || null);
-                setChildren(data.children?.length > 0 ? data.children : [{ name: '', age: '', daysAttending: [] }]);
+                if (Array.isArray(data.children) && data.children.length > 0) {
+                    const mappedChildren: Child[] = data.children.map((child: any) => ({
+                        name: child.name || '',
+                        birthYear: child.birthYear ? String(child.birthYear) : '',
+                        birthMonth: child.birthMonth ? String(child.birthMonth) : '',
+                        daysAttending: Array.isArray(child.daysAttending) ? child.daysAttending : [],
+                        age: child.age || '',
+                    }));
+                    setChildren(mappedChildren);
+                } else {
+                    setChildren([{ name: '', birthYear: '', birthMonth: '', daysAttending: [] }]);
+                }
                 setShowEmail(data.showEmail ?? true);
                 setShowPhone(data.showPhone ?? false);
             }
@@ -89,7 +102,7 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
     };
 
     const addChild = () => {
-        setChildren([...children, { name: '', age: '', daysAttending: [] }]);
+        setChildren([...children, { name: '', birthYear: '', birthMonth: '', daysAttending: [] }]);
     };
 
     const removeChild = (index: number) => {
@@ -128,12 +141,53 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
                 profileImageUrl = await uploadProfileImage(profileImage);
             }
 
+            const cleanedChildren: Array<{
+                name: string;
+                birthYear: number;
+                birthMonth: number;
+                daysAttending: string[];
+            }> = [];
+            for (const child of children) {
+                if (!child.name.trim()) {
+                    continue;
+                }
+
+                const year = child.birthYear ? parseInt(child.birthYear, 10) : NaN;
+                const month = child.birthMonth ? parseInt(child.birthMonth, 10) : NaN;
+
+                if (Number.isNaN(year) || Number.isNaN(month)) {
+                    Alert.alert('Invalid birth date', `Please provide both birth year and birth month for ${child.name || 'each child'}.`);
+                    setLoading(false);
+                    return;
+                }
+
+                const currentYear = new Date().getFullYear();
+                if (year < 1900 || year > currentYear) {
+                    Alert.alert('Invalid birth year', `Birth year for ${child.name || 'a child'} must be between 1900 and ${currentYear}.`);
+                    setLoading(false);
+                    return;
+                }
+
+                if (month < 1 || month > 12) {
+                    Alert.alert('Invalid birth month', `Birth month for ${child.name || 'a child'} must be between 1 and 12.`);
+                    setLoading(false);
+                    return;
+                }
+
+                cleanedChildren.push({
+                    name: child.name.trim(),
+                    birthYear: year,
+                    birthMonth: month,
+                    daysAttending: child.daysAttending,
+                });
+            }
+
             const profileData = {
                 displayName,
                 email: auth.currentUser?.email,
                 phone: phone || null,
                 profileImageUrl,
-                children: children.filter(c => c.name.trim()),
+                children: cleanedChildren,
                 showEmail,
                 showPhone,
                 updatedAt: new Date(),
@@ -229,13 +283,30 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
                                 placeholder="Child's name"
                             />
 
-                            <TextInput
-                                style={styles.input}
-                                value={child.age}
-                                onChangeText={(text) => updateChild(index, 'age', text)}
-                                placeholder="Age"
-                                keyboardType="number-pad"
-                            />
+                            <View style={styles.birthRow}>
+                                <View style={[styles.birthInputWrapper, styles.birthYearWrapper]}>
+                                    <Text style={styles.birthLabel}>Birth Year</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={child.birthYear}
+                                        onChangeText={(text) => updateChild(index, 'birthYear', text.replace(/[^0-9]/g, ''))}
+                                        placeholder="YYYY"
+                                        keyboardType="number-pad"
+                                        maxLength={4}
+                                    />
+                                </View>
+                                <View style={[styles.birthInputWrapper, styles.birthMonthWrapper]}>
+                                    <Text style={styles.birthLabel}>Birth Month</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={child.birthMonth}
+                                        onChangeText={(text) => updateChild(index, 'birthMonth', text.replace(/[^0-9]/g, ''))}
+                                        placeholder="MM"
+                                        keyboardType="number-pad"
+                                        maxLength={2}
+                                    />
+                                </View>
+                            </View>
 
                             <Text style={styles.daysLabel}>Days attending:</Text>
                             <View style={styles.daysContainer}>
@@ -420,6 +491,24 @@ const styles = StyleSheet.create({
     dayButtonTextSelected: {
         color: '#fff',
         fontWeight: '600',
+    },
+    birthRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    birthInputWrapper: {
+        flex: 1,
+    },
+    birthYearWrapper: {
+        marginRight: 12,
+    },
+    birthMonthWrapper: {
+        maxWidth: 120,
+    },
+    birthLabel: {
+        fontSize: 14,
+        color: '#666',
+        marginBottom: 6,
     },
     addChildButton: {
         padding: 15,

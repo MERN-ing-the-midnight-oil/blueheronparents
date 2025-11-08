@@ -7,6 +7,7 @@ import { auth, db } from './firebase.config';
 import AppNavigator from './src/navigation/AppNavigator';
 import AuthScreen from './src/screens/AuthScreen';
 import ProfileSetupScreen from './src/screens/ProfileSetupScreen';
+import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { registerForPushNotificationsAsync } from './src/utils/notifications';
@@ -46,39 +47,69 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileComplete, setProfileComplete] = useState(false);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
 
+  const loadProfileStatus = async (currentUser: User) => {
+    try {
+      const docRef = doc(db, 'users', currentUser.uid);
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Firebase operation timeout')), 10000)
+      );
+
+      const docSnap = await Promise.race([getDoc(docRef), timeoutPromise]);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setProfileComplete(data?.profileComplete || false);
+      } else {
+        setProfileComplete(false);
+      }
+    } catch (error) {
+      console.error('Error checking profile:', error);
+      setProfileComplete(false);
+    }
+  };
+
+  const refreshEmailVerificationStatus = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    await currentUser.reload();
+    const verified = currentUser.emailVerified;
+    setIsEmailVerified(verified);
+    if (verified) {
+      await registerForPushNotificationsAsync();
+      await loadProfileStatus(currentUser);
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setLoading(true);
       setUser(currentUser);
 
       if (currentUser) {
-        // Register for push notifications when user logs in
-        registerForPushNotificationsAsync();
-
-        // Check if profile is complete with timeout
         try {
-          const docRef = doc(db, 'users', currentUser.uid);
-
-          // Add timeout wrapper for Firebase operations
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Firebase operation timeout')), 10000)
-          );
-
-          const docSnap = await Promise.race([getDoc(docRef), timeoutPromise]);
-
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            setProfileComplete(data?.profileComplete || false);
-          } else {
-            setProfileComplete(false);
-          }
+          await currentUser.reload();
         } catch (error) {
-          console.error('Error checking profile:', error);
-          // On timeout or error, default to false but don't crash
+          console.warn('Failed to reload user:', error);
+        }
+
+        const verified = currentUser.emailVerified;
+        setIsEmailVerified(verified);
+
+        if (verified) {
+          await registerForPushNotificationsAsync();
+          await loadProfileStatus(currentUser);
+        } else {
           setProfileComplete(false);
         }
+      } else {
+        setIsEmailVerified(false);
+        setProfileComplete(false);
       }
 
       setLoading(false);
@@ -125,6 +156,20 @@ export default function App() {
       <ErrorBoundary>
         <NavigationContainer>
           <AuthScreen />
+        </NavigationContainer>
+      </ErrorBoundary>
+    );
+  }
+
+  // Logged in but email not verified
+  if (!isEmailVerified) {
+    return (
+      <ErrorBoundary>
+        <NavigationContainer>
+          <VerifyEmailScreen
+            email={user.email}
+            onCheckVerification={refreshEmailVerificationStatus}
+          />
         </NavigationContainer>
       </ErrorBoundary>
     );

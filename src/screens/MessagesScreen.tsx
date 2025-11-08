@@ -27,13 +27,18 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../../firebase.config';
 import { sendNotificationToUsers } from '../utils/notifications';
+import {
+    DELETED_MESSAGE_PLACEHOLDER,
+    DELETED_USER_DISPLAY_NAME,
+    DELETED_USER_PLACEHOLDER_ID,
+} from '../constants/placeholders';
 
 interface User {
     id: string;
     displayName: string;
     email: string;
     profileImageUrl?: string;
-    children?: { name: string; age: string; daysAttending: string[] }[];
+    children?: { name: string; birthYear?: number; birthMonth?: number; age?: string; daysAttending: string[] }[];
 }
 
 interface Message {
@@ -142,22 +147,61 @@ export default function MessagesScreen() {
                 // Get user data for each conversation
                 const conversationsWithUsers = await Promise.all(
                     conversationsData.map(async (conv) => {
-                        const otherUserId = conv.participants.find(id => id !== auth.currentUser?.uid);
-                        if (!otherUserId) return null;
+                        const otherUserId = conv.participants.find(
+                            id => id !== auth.currentUser?.uid && id !== DELETED_USER_PLACEHOLDER_ID
+                        ) ?? (conv.participants.includes(DELETED_USER_PLACEHOLDER_ID) ? DELETED_USER_PLACEHOLDER_ID : undefined);
+
+                        if (!otherUserId) {
+                            return {
+                                ...conv,
+                                otherUser: {
+                                    id: DELETED_USER_PLACEHOLDER_ID,
+                                    displayName: DELETED_USER_DISPLAY_NAME,
+                                    email: '',
+                                } as User,
+                            } as ConversationWithUser;
+                        }
+
+                        if (otherUserId === DELETED_USER_PLACEHOLDER_ID) {
+                            return {
+                                ...conv,
+                                otherUser: {
+                                    id: DELETED_USER_PLACEHOLDER_ID,
+                                    displayName: DELETED_USER_DISPLAY_NAME,
+                                    email: '',
+                                } as User,
+                            } as ConversationWithUser;
+                        }
 
                         try {
                             const userDoc = await getDoc(doc(db, 'users', otherUserId));
-                            const userData = userDoc.exists() ? { id: userDoc.id, ...userDoc.data() } as User : null;
+                            if (!userDoc.exists()) {
+                                return {
+                                    ...conv,
+                                    otherUser: {
+                                        id: DELETED_USER_PLACEHOLDER_ID,
+                                        displayName: DELETED_USER_DISPLAY_NAME,
+                                        email: '',
+                                    } as User,
+                                } as ConversationWithUser;
+                            }
 
-                            if (!userData) return null;
+                            const userData = { id: userDoc.id, ...userDoc.data() } as User;
 
                             return {
                                 ...conv,
-                                otherUser: userData
+                                otherUser: userData,
                             } as ConversationWithUser;
                         } catch (error) {
                             console.error('Error loading user data:', error);
-                            return null;
+                            return {
+                                ...conv,
+                                otherUser: {
+                                    id: DELETED_USER_PLACEHOLDER_ID,
+                                    displayName: DELETED_USER_DISPLAY_NAME,
+                                    email: '',
+                                } as User,
+                            } as ConversationWithUser;
                         }
                     })
                 );
@@ -232,6 +276,7 @@ export default function MessagesScreen() {
 
     const sendMessage = async () => {
         if (!messageText.trim() || !showConversation) return;
+        if (showConversation.otherUser.id === DELETED_USER_PLACEHOLDER_ID) return;
 
         try {
             const conversationId = await createOrGetConversation(showConversation.otherUser.id);
@@ -313,9 +358,14 @@ export default function MessagesScreen() {
                 <Text style={styles.lastMessage} numberOfLines={1}>
                     {item.lastMessage || 'No messages yet'}
                 </Text>
-                {item.otherUser.children && item.otherUser.children.length > 0 && (
+                {item.otherUser.id !== DELETED_USER_PLACEHOLDER_ID && item.otherUser.children && item.otherUser.children.length > 0 && (
                     <Text style={styles.childrenInfo} numberOfLines={1}>
                         Parent of {item.otherUser.children.map(c => c.name).join(', ')}
+                    </Text>
+                )}
+                {item.otherUser.id === DELETED_USER_PLACEHOLDER_ID && (
+                    <Text style={styles.childrenInfo} numberOfLines={1}>
+                        This member has deleted their account.
                     </Text>
                 )}
             </View>
@@ -382,10 +432,14 @@ export default function MessagesScreen() {
 
     const renderMessage = ({ item }: { item: Message }) => {
         const isMyMessage = item.senderId === auth.currentUser?.uid;
+        const isFormerMember = item.senderId === DELETED_USER_PLACEHOLDER_ID;
         return (
             <View style={[styles.messageContainer, isMyMessage ? styles.myMessage : styles.otherMessage]}>
-                <Text style={[styles.messageText, isMyMessage ? styles.myMessageText : styles.otherMessageText]}>
-                    {item.text}
+                <Text style={[
+                    styles.messageText,
+                    isMyMessage ? styles.myMessageText : styles.otherMessageText
+                ]}>
+                    {isFormerMember ? DELETED_MESSAGE_PLACEHOLDER : item.text}
                 </Text>
                 <Text style={[styles.messageTime, isMyMessage ? styles.myMessageTime : styles.otherMessageTime]}>
                     {formatMessageTime(item.createdAt)}
@@ -401,6 +455,8 @@ export default function MessagesScreen() {
             </View>
         );
     }
+
+    const isReadonlyConversation = showConversation?.otherUser.id === DELETED_USER_PLACEHOLDER_ID;
 
     return (
         <View style={styles.container}>
@@ -472,21 +528,30 @@ export default function MessagesScreen() {
                         style={styles.messagesList}
                     />
 
-                    <View style={styles.messageInputContainer}>
+                    <View style={[styles.messageInputContainer, isReadonlyConversation && styles.readonlyConversation]}>
                         <TextInput
                             style={styles.messageInput}
                             value={messageText}
                             onChangeText={setMessageText}
                             placeholder="Type a message..."
                             multiline
+                            editable={!isReadonlyConversation}
                         />
                         <Pressable
-                            style={styles.sendButton}
+                            style={[styles.sendButton, (isReadonlyConversation || !messageText.trim()) && styles.sendButtonDisabled]}
                             onPress={() => sendMessage()}
+                            disabled={isReadonlyConversation || !messageText.trim()}
                         >
                             <Text style={styles.sendButtonText}>Send</Text>
                         </Pressable>
                     </View>
+                    {isReadonlyConversation && (
+                        <View style={styles.readonlyNotice}>
+                            <Text style={styles.readonlyNoticeText}>
+                                You can no longer message this member because their account was deleted.
+                            </Text>
+                        </View>
+                    )}
                 </SafeAreaView>
             </Modal>
         </View>
@@ -730,8 +795,25 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         justifyContent: 'center',
     },
+    sendButtonDisabled: {
+        opacity: 0.5,
+    },
     sendButtonText: {
         color: '#fff',
         fontWeight: '600',
+    },
+    readonlyConversation: {
+        opacity: 0.7,
+    },
+    readonlyNotice: {
+        padding: 12,
+        backgroundColor: '#fff3cd',
+        borderTopWidth: 1,
+        borderTopColor: '#ffeeba',
+    },
+    readonlyNoticeText: {
+        color: '#856404',
+        fontSize: 13,
+        textAlign: 'center',
     },
 });

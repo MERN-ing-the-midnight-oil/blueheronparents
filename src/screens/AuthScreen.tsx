@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Alert } from 'react-native';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import {
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    sendEmailVerification,
+    signOut
+} from 'firebase/auth';
 import { auth } from '../../firebase.config';
 
 export default function AuthScreen() {
@@ -11,10 +16,23 @@ export default function AuthScreen() {
     const handleAuth = async () => {
         try {
             if (isSignUp) {
-                await createUserWithEmailAndPassword(auth, email, password);
-                Alert.alert('Success', 'Account created!');
+                const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+                if (credential.user) {
+                    try {
+                        await sendEmailVerification(credential.user);
+                        Alert.alert(
+                            'Verify your email',
+                            'We sent a verification link to your inbox. Please verify your email before signing in.'
+                        );
+                    } catch (verificationError: any) {
+                        console.error('Verification email error:', verificationError);
+                        Alert.alert('Email not sent', 'Account created, but we could not send a verification email. Please try resending from the next screen.');
+                    }
+                }
+                // Sign out so user must log in after verifying
+                await signOut(auth);
             } else {
-                await signInWithEmailAndPassword(auth, email, password);
+                await signInWithEmailAndPassword(auth, email.trim(), password);
             }
         } catch (error: any) {
             Alert.alert('Error', error.message);

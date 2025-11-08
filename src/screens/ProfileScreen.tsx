@@ -4,11 +4,14 @@ import { doc, getDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../../firebase.config';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { getAgeLabel } from '../utils/age';
 
 interface Child {
     name: string;
-    age: string;
+    birthYear?: number;
+    birthMonth?: number;
     daysAttending: string[];
+    age?: string; // legacy support
 }
 
 interface UserProfile {
@@ -134,7 +137,13 @@ export default function ProfileScreen() {
                     {profile.children.map((child, index) => (
                         <View key={index} style={styles.childCard}>
                             <Text style={styles.childName}>{child.name}</Text>
-                            {child.age && <Text style={styles.childAge}>Age: {child.age}</Text>}
+                            <Text style={styles.childAge}>
+                                Age: {getAgeLabel({
+                                    birthYear: child.birthYear,
+                                    birthMonth: child.birthMonth,
+                                    fallbackAge: child.age,
+                                })}
+                            </Text>
                             {child.daysAttending && child.daysAttending.length > 0 && (
                                 <Text style={styles.childDays}>
                                     Attends: {child.daysAttending.join(', ')}
