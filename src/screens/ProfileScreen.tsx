@@ -89,7 +89,15 @@ export default function ProfileScreen() {
         return (
             <View style={styles.emptyContainer}>
                 <Text style={styles.emptyTitle}>Profile Not Complete</Text>
-                <Text style={styles.emptyText}>Please complete your profile to connect with other parents</Text>
+                <Text style={styles.emptyText}>
+                    Please complete your profile to connect with other parents.
+                </Text>
+                <Pressable
+                    style={styles.completeProfileButton}
+                    onPress={() => (navigation as any).navigate('EditProfile')}
+                >
+                    <Text style={styles.completeProfileButtonText}>Complete Profile Now</Text>
+                </Pressable>
             </View>
         );
     }
@@ -191,6 +199,18 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#666',
         textAlign: 'center',
+    },
+    completeProfileButton: {
+        marginTop: 24,
+        paddingVertical: 12,
+        paddingHorizontal: 24,
+        borderRadius: 8,
+        backgroundColor: '#2c5f7c',
+    },
+    completeProfileButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '600',
     },
     header: {
         backgroundColor: '#fff',

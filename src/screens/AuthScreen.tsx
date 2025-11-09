@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
     sendEmailVerification,
+    sendPasswordResetEmail,
     signOut
 } from 'firebase/auth';
 import { auth } from '../../firebase.config';
@@ -12,9 +13,11 @@ export default function AuthScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isSignUp, setIsSignUp] = useState(false);
+    const [working, setWorking] = useState(false);
 
     const handleAuth = async () => {
         try {
+            setWorking(true);
             if (isSignUp) {
                 const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
                 if (credential.user) {
@@ -36,6 +39,25 @@ export default function AuthScreen() {
             }
         } catch (error: any) {
             Alert.alert('Error', error.message);
+        } finally {
+            setWorking(false);
+        }
+    };
+
+    const handlePasswordReset = async () => {
+        if (!email.trim()) {
+            Alert.alert('Email required', 'Please enter your email address above before requesting a password reset.');
+            return;
+        }
+
+        try {
+            setWorking(true);
+            await sendPasswordResetEmail(auth, email.trim());
+            Alert.alert('Check your inbox', 'We sent a password reset link to your email address.');
+        } catch (error: any) {
+            Alert.alert('Reset failed', error.message);
+        } finally {
+            setWorking(false);
         }
     };
 
@@ -61,11 +83,27 @@ export default function AuthScreen() {
                 secureTextEntry
             />
 
-            <Pressable style={styles.button} onPress={handleAuth}>
-                <Text style={styles.buttonText}>
-                    {isSignUp ? 'Sign Up' : 'Sign In'}
-                </Text>
+            <Pressable
+                style={[styles.button, working && styles.buttonDisabled]}
+                onPress={handleAuth}
+                disabled={working}
+            >
+                {working ? (
+                    <ActivityIndicator color="#fff" />
+                ) : (
+                    <Text style={styles.buttonText}>
+                        {isSignUp ? 'Sign Up' : 'Sign In'}
+                    </Text>
+                )}
             </Pressable>
+
+            {!isSignUp && (
+                <Pressable onPress={handlePasswordReset} disabled={working}>
+                    <Text style={styles.forgotPasswordText}>
+                        {working ? 'Sending reset email…' : 'Forgot password?'}
+                    </Text>
+                </Pressable>
+            )}
 
             <Pressable onPress={() => setIsSignUp(!isSignUp)}>
                 <Text style={styles.switchText}>
@@ -111,6 +149,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 15,
     },
+    buttonDisabled: {
+        opacity: 0.7,
+    },
     buttonText: {
         color: '#fff',
         fontSize: 16,
@@ -120,5 +161,11 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         color: '#2c5f7c',
         marginTop: 10,
+    },
+    forgotPasswordText: {
+        textAlign: 'center',
+        color: '#2c5f7c',
+        marginBottom: 10,
+        fontWeight: '600',
     },
 });

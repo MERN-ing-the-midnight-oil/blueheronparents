@@ -110,16 +110,18 @@ export default function AppNavigator() {
             <Tab.Screen
                 name="Profile"
                 component={ProfileScreen}
-                options={{
+                options={({ navigation }) => ({
                     tabBarButton: () => null,
-                }}
+                    headerLeft: () => <HeaderHomeButton navigation={navigation} />,
+                })}
             />
             <Tab.Screen
                 name="Settings"
                 component={SettingsScreen}
-                options={{
+                options={({ navigation }) => ({
                     tabBarButton: () => null,
-                }}
+                    headerLeft: () => <HeaderHomeButton navigation={navigation} />,
+                })}
             />
             <Tab.Screen
                 name="EditProfile"
