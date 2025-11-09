@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, FlatList, Alert, Modal, Image, SafeAreaView } from 'react-native';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, getDocs } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, getDocs, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -10,7 +10,9 @@ import { sendNotificationToUsers } from '../utils/notifications';
 interface Comment {
     id: string;
     text: string;
-    authorEmail: string;
+    authorDisplayName?: string;
+    authorEmail?: string;
+    authorProfileImageUrl?: string;
     userId: string;
     createdAt: any;
 }
@@ -18,7 +20,9 @@ interface Comment {
 interface Post {
     id: string;
     text: string;
-    authorEmail: string;
+    authorDisplayName?: string;
+    authorEmail?: string;
+    authorProfileImageUrl?: string;
     createdAt: any;
     userId: string;
     likes?: string[];
@@ -42,11 +46,18 @@ export default function BulletinBoardScreen() {
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             try {
-                const postsData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    likes: doc.data().likes || [],
-                } as Post));
+            const postsData = snapshot.docs.map(docSnap => {
+                const data = docSnap.data() as any;
+                const fallbackEmail = data.authorEmail || 'unknown@blueheronparents.com';
+                const fallbackDisplayName = data.authorDisplayName || fallbackEmail.split('@')[0] || 'Anonymous';
+                return {
+                    id: docSnap.id,
+                    ...data,
+                    authorEmail: fallbackEmail,
+                    authorDisplayName: fallbackDisplayName,
+                    likes: data.likes || [],
+                } as Post;
+            });
                 setPosts(postsData);
             } catch (error) {
                 console.error('Error processing posts snapshot:', error);
@@ -70,10 +81,18 @@ export default function BulletinBoardScreen() {
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const commentsData = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            } as Comment));
+            const commentsData = snapshot.docs.map(docSnap => {
+                const data = docSnap.data() as any;
+                const fallbackEmail = data.authorEmail || 'unknown@blueheronparents.com';
+                const fallbackDisplayName = data.authorDisplayName || fallbackEmail.split('@')[0] || 'Anonymous';
+
+                return {
+                    id: docSnap.id,
+                    ...data,
+                    authorEmail: fallbackEmail,
+                    authorDisplayName: fallbackDisplayName,
+                } as Comment;
+            });
             setComments(commentsData);
         });
 
@@ -152,6 +171,40 @@ export default function BulletinBoardScreen() {
         }
     };
 
+    const getAuthorMetadata = async (userId: string | undefined | null) => {
+        const fallbackEmail = auth.currentUser?.email || 'unknown@blueheronparents.com';
+        const fallbackDisplayName = fallbackEmail.split('@')[0] || 'Anonymous';
+        const fallbackMeta = {
+            authorDisplayName: fallbackDisplayName,
+            authorEmail: fallbackEmail,
+            authorProfileImageUrl: undefined as string | undefined,
+        };
+
+        if (!userId) {
+            return {
+                authorDisplayName: fallbackMeta.authorDisplayName,
+                authorEmail: fallbackMeta.authorEmail,
+                authorProfileImageUrl: fallbackMeta.authorProfileImageUrl,
+            };
+        }
+
+        try {
+            const userDoc = await getDoc(doc(db, 'users', userId));
+            if (userDoc.exists()) {
+                const data = userDoc.data() as any;
+                return {
+                    authorDisplayName: data.displayName || fallbackMeta.authorDisplayName,
+                    authorEmail: data.email || fallbackMeta.authorEmail,
+                    authorProfileImageUrl: data.profileImageUrl,
+                };
+            }
+        } catch (error) {
+            console.warn('Failed to fetch author metadata:', error);
+        }
+
+        return fallbackMeta;
+    };
+
     const handlePost = async () => {
         if (!postText.trim() && !selectedImage) {
             Alert.alert('Error', 'Please write something or add a photo!');
@@ -160,9 +213,13 @@ export default function BulletinBoardScreen() {
 
         setLoading(true);
         try {
+            const metadata = await getAuthorMetadata(auth.currentUser?.uid);
+
             const postData: any = {
                 text: postText,
-                authorEmail: auth.currentUser?.email,
+                authorDisplayName: metadata.authorDisplayName,
+                authorEmail: metadata.authorEmail,
+                authorProfileImageUrl: metadata.authorProfileImageUrl,
                 userId: auth.currentUser?.uid,
                 createdAt: serverTimestamp(),
                 likes: [],
@@ -186,7 +243,7 @@ export default function BulletinBoardScreen() {
             await sendNotificationToUsers(
                 userIds,
                 'New Nest Note',
-                `${auth.currentUser?.email?.split('@')[0]} posted: ${previewText || '📷 shared a photo'}`,
+                `${metadata.authorDisplayName} posted: ${previewText || '📷 shared a photo'}`,
                 'nestNotes'
             );
 
@@ -262,7 +319,9 @@ export default function BulletinBoardScreen() {
         try {
             await addDoc(collection(db, 'posts', viewingComments.id, 'comments'), {
                 text: commentText,
-                authorEmail: auth.currentUser?.email,
+                authorDisplayName: metadata.authorDisplayName,
+                authorEmail: metadata.authorEmail,
+                authorProfileImageUrl: metadata.authorProfileImageUrl,
                 userId: auth.currentUser?.uid,
                 createdAt: serverTimestamp(),
             });
@@ -340,7 +399,21 @@ export default function BulletinBoardScreen() {
                 renderItem={({ item }) => (
                     <View style={styles.postCard}>
                         <View style={styles.postHeader}>
-                            <Text style={styles.authorEmail}>{item.authorEmail}</Text>
+                            <View style={styles.authorInfo}>
+                                {item.authorProfileImageUrl ? (
+                                    <Image source={{ uri: item.authorProfileImageUrl }} style={styles.authorAvatar} />
+                                ) : (
+                                    <View style={styles.authorAvatarPlaceholder}>
+                                        <Text style={styles.avatarInitials}>
+                                            {item.authorDisplayName?.charAt(0).toUpperCase()}
+                                        </Text>
+                                    </View>
+                                )}
+                                <View>
+                                    <Text style={styles.authorName}>{item.authorDisplayName}</Text>
+                                    <Text style={styles.authorEmail}>{item.authorEmail}</Text>
+                                </View>
+                            </View>
                             <Text style={styles.timestamp}>{formatDate(item.createdAt)}</Text>
                         </View>
 
@@ -446,7 +519,24 @@ export default function BulletinBoardScreen() {
                         </View>
 
                         <View style={styles.originalPost}>
-                            <Text style={styles.originalAuthor}>{viewingComments?.authorEmail}</Text>
+                            <View style={styles.authorInfo}>
+                                {viewingComments?.authorProfileImageUrl ? (
+                                    <Image
+                                        source={{ uri: viewingComments.authorProfileImageUrl }}
+                                        style={styles.authorAvatar}
+                                    />
+                                ) : (
+                                    <View style={styles.authorAvatarPlaceholder}>
+                                        <Text style={styles.avatarInitials}>
+                                            {viewingComments?.authorDisplayName?.charAt(0).toUpperCase()}
+                                        </Text>
+                                    </View>
+                                )}
+                                <View>
+                                    <Text style={styles.authorName}>{viewingComments?.authorDisplayName}</Text>
+                                    <Text style={styles.authorEmail}>{viewingComments?.authorEmail}</Text>
+                                </View>
+                            </View>
                             <Text style={styles.originalText}>{viewingComments?.text}</Text>
                             {viewingComments?.imageUrl && (
                                 <Image
@@ -462,7 +552,24 @@ export default function BulletinBoardScreen() {
                             keyExtractor={(item) => item.id}
                             renderItem={({ item }) => (
                                 <View style={styles.commentCard}>
-                                    <Text style={styles.commentAuthor}>{item.authorEmail}</Text>
+                                    <View style={styles.commentAuthorRow}>
+                                        {item.authorProfileImageUrl ? (
+                                            <Image
+                                                source={{ uri: item.authorProfileImageUrl }}
+                                                style={styles.commentAvatar}
+                                            />
+                                        ) : (
+                                            <View style={styles.commentAvatarPlaceholder}>
+                                                <Text style={styles.commentAvatarInitial}>
+                                                    {item.authorDisplayName?.charAt(0).toUpperCase()}
+                                                </Text>
+                                            </View>
+                                        )}
+                                        <View>
+                                            <Text style={styles.commentAuthorName}>{item.authorDisplayName}</Text>
+                                            <Text style={styles.commentAuthorEmail}>{item.authorEmail}</Text>
+                                        </View>
+                                    </View>
                                     <Text style={styles.commentText}>{item.text}</Text>
                                     <Text style={styles.commentTime}>{formatDate(item.createdAt)}</Text>
                                 </View>
@@ -590,9 +697,37 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         marginBottom: 8,
     },
-    authorEmail: {
+    authorInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    authorAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        marginRight: 10,
+    },
+    authorAvatarPlaceholder: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        marginRight: 10,
+        backgroundColor: '#2c5f7c',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarInitials: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 18,
+    },
+    authorName: {
         fontWeight: '600',
         fontSize: 14,
+        color: '#333',
+    },
+    authorEmail: {
+        fontSize: 12,
         color: '#2c5f7c',
     },
     timestamp: {
@@ -725,6 +860,38 @@ const styles = StyleSheet.create({
         borderBottomColor: '#e0e0e0',
     },
     originalAuthor: {
+    commentAuthorRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 6,
+        gap: 10,
+    },
+    commentAvatar: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+    },
+    commentAvatarPlaceholder: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#2c5f7c',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    commentAvatarInitial: {
+        color: '#fff',
+        fontWeight: '600',
+    },
+    commentAuthorName: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#2c5f7c',
+    },
+    commentAuthorEmail: {
+        fontSize: 12,
+        color: '#666',
+    },
         fontWeight: '600',
         fontSize: 14,
         color: '#2c5f7c',

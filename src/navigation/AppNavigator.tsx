@@ -1,5 +1,5 @@
 import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator, BottomTabBar } from '@react-navigation/bottom-tabs';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import BulletinBoardScreen from '../screens/BulletinBoardScreen';
@@ -9,6 +9,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
+const PRIMARY_TABS = ['Board', 'Messages', 'Calendar'];
 const Tab = createBottomTabNavigator();
 
 const HeaderShortcuts = ({ navigation }: { navigation: any }) => (
@@ -36,9 +37,37 @@ const HeaderHomeButton = ({ navigation }: { navigation: any }) => (
     </Pressable>
 );
 
+const PrimaryTabBar = (props: any) => {
+    const filteredRoutes = props.state.routes
+        .map((route: any, originalIndex: number) => ({ route, originalIndex }))
+        .filter(({ route }: any) => PRIMARY_TABS.includes(route.name));
+
+    const activeIndex = filteredRoutes.findIndex(
+        ({ originalIndex }: any) => originalIndex === props.state.index
+    );
+
+    const state = {
+        ...props.state,
+        routes: filteredRoutes.map(({ route }: any) => route),
+        index: activeIndex >= 0 ? activeIndex : 0,
+    };
+
+    return (
+        <BottomTabBar
+            {...props}
+            state={state}
+            style={[
+                props.style,
+                { justifyContent: 'space-between', paddingHorizontal: 32 },
+            ]}
+        />
+    );
+};
+
 export default function AppNavigator() {
     return (
         <Tab.Navigator
+            tabBar={PrimaryTabBar}
             screenOptions={{
                 tabBarActiveTintColor: '#2c5f7c',
                 tabBarInactiveTintColor: '#999',
