@@ -73,6 +73,24 @@ export default function MessagesScreen() {
     const [messageText, setMessageText] = useState('');
     const [loading, setLoading] = useState(true);
 
+    const getUserDisplayName = (user: User) => {
+        if (user.displayName && user.displayName.trim().length > 0) {
+            return user.displayName;
+        }
+
+        if (user.email && user.email.trim().length > 0) {
+            return user.email;
+        }
+
+        return 'Unknown Member';
+    };
+
+    const getUserInitial = (user: User) => {
+        const displayName = getUserDisplayName(user).trim();
+        const firstChar = displayName.charAt(0);
+        return firstChar ? firstChar.toUpperCase() : '?';
+    };
+
     useEffect(() => {
         loadUsers();
         loadConversations();
@@ -128,7 +146,16 @@ export default function MessagesScreen() {
             const q = query(collection(db, 'users'));
             const querySnapshot = await getDocs(q);
             const usersData = querySnapshot.docs
-                .map(doc => ({ id: doc.id, ...doc.data() } as User))
+                .map(doc => {
+                    const data = doc.data() as Partial<User>;
+                    return {
+                        id: doc.id,
+                        displayName: typeof data.displayName === 'string' ? data.displayName : '',
+                        email: typeof data.email === 'string' ? data.email : '',
+                        profileImageUrl: data.profileImageUrl,
+                        children: data.children,
+                    } as User;
+                })
                 .filter(user => user.id !== auth.currentUser?.uid); // Exclude current user
             setUsers(usersData);
         } catch (error: any) {
@@ -153,10 +180,17 @@ export default function MessagesScreen() {
                     return;
                 }
 
-                const conversationsData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                } as Conversation));
+                const conversationsData = snapshot.docs.map(doc => {
+                    const data = doc.data() as any;
+                    return {
+                        id: doc.id,
+                        participants: Array.isArray(data.participants) ? data.participants : [],
+                        lastMessage: typeof data.lastMessage === 'string' ? data.lastMessage : '',
+                        lastMessageTime: data.lastMessageTime,
+                        lastMessageSender: typeof data.lastMessageSender === 'string' ? data.lastMessageSender : '',
+                        unreadCount: data.unreadCount,
+                    } as Conversation;
+                });
 
                 // Get user data for each conversation
                 const conversationsWithUsers = await Promise.all(
@@ -200,7 +234,14 @@ export default function MessagesScreen() {
                                 } as ConversationWithUser;
                             }
 
-                            const userData = { id: userDoc.id, ...userDoc.data() } as User;
+                            const otherData = userDoc.data() as Partial<User>;
+                            const userData: User = {
+                                id: userDoc.id,
+                                displayName: typeof otherData.displayName === 'string' ? otherData.displayName : '',
+                                email: typeof otherData.email === 'string' ? otherData.email : '',
+                                profileImageUrl: otherData.profileImageUrl,
+                                children: otherData.children,
+                            };
 
                             return {
                                 ...conv,
@@ -359,14 +400,14 @@ export default function MessagesScreen() {
             ) : (
                 <View style={[styles.avatar, styles.avatarPlaceholder]}>
                     <Text style={styles.avatarText}>
-                        {item.otherUser.displayName.charAt(0).toUpperCase()}
+                        {getUserInitial(item.otherUser)}
                     </Text>
                 </View>
             )}
 
             <View style={styles.conversationInfo}>
                 <View style={styles.conversationListHeader}>
-                    <Text style={styles.userName}>{item.otherUser.displayName}</Text>
+                    <Text style={styles.userName}>{getUserDisplayName(item.otherUser)}</Text>
                     <Text style={styles.timeText}>{formatTime(item.lastMessageTime)}</Text>
                 </View>
                 <Text style={styles.lastMessage} numberOfLines={1}>
@@ -397,13 +438,18 @@ export default function MessagesScreen() {
                 // Create a temporary conversation object for display
                 const otherUser = users.find(u => u.id === otherUserId);
                 if (otherUser) {
+                    const normalizedUser: User = {
+                        ...otherUser,
+                        displayName: typeof otherUser.displayName === 'string' ? otherUser.displayName : '',
+                        email: typeof otherUser.email === 'string' ? otherUser.email : '',
+                    };
                     conversation = {
                         id: conversationId,
                         participants: [auth.currentUser!.uid, otherUserId],
                         lastMessage: '',
                         lastMessageTime: null,
                         lastMessageSender: '',
-                        otherUser: otherUser
+                        otherUser: normalizedUser
                     };
                 }
             }
@@ -427,14 +473,14 @@ export default function MessagesScreen() {
             ) : (
                 <View style={[styles.avatar, styles.avatarPlaceholder]}>
                     <Text style={styles.avatarText}>
-                        {item.displayName.charAt(0).toUpperCase()}
+                        {getUserInitial(item)}
                     </Text>
                 </View>
             )}
 
             <View style={styles.userInfo}>
-                <Text style={styles.userName}>{item.displayName}</Text>
-                <Text style={styles.userEmail}>{item.email}</Text>
+                <Text style={styles.userName}>{getUserDisplayName(item)}</Text>
+                <Text style={styles.userEmail}>{item.email || 'No email provided'}</Text>
                 {item.children && item.children.length > 0 && (
                     <Text style={styles.childrenInfo}>
                         Parent of {item.children.map(c => c.name).join(', ')}
