@@ -83,16 +83,30 @@ export default function MessagesScreen() {
 
         const q = query(
             collection(db, 'messages'),
-            where('conversationId', '==', showConversation.id),
-            orderBy('createdAt', 'asc')
+            where('conversationId', '==', showConversation.id)
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             try {
-                const messagesData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                } as Message));
+                const messagesData = snapshot.docs
+                    .map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    } as Message))
+                    .sort((a, b) => {
+                        const toMillis = (timestamp: any) => {
+                            if (!timestamp) return 0;
+                            if (typeof timestamp.toMillis === 'function') {
+                                return timestamp.toMillis();
+                            }
+                            if (typeof timestamp.seconds === 'number') {
+                                return timestamp.seconds * 1000 + (timestamp.nanoseconds || 0) / 1_000_000;
+                            }
+                            return 0;
+                        };
+
+                        return toMillis(a.createdAt) - toMillis(b.createdAt);
+                    });
                 setMessages(messagesData);
 
                 // Mark messages as read
