@@ -84,8 +84,8 @@ export default function AppNavigator() {
                 name="Board"
                 component={BulletinBoardScreen}
                 options={({ navigation }) => ({
-                    title: 'Nest News',
-                    tabBarLabel: 'Nest News',
+                    title: 'Nest Nuggets',
+                    tabBarLabel: 'Nest Nuggets',
                     headerRight: () => <HeaderShortcuts navigation={navigation} />,
                 })}
             />
@@ -93,6 +93,8 @@ export default function AppNavigator() {
                 name="Messages"
                 component={MessagesScreen}
                 options={({ navigation }) => ({
+                    title: 'Cawmunication',
+                    tabBarLabel: 'Cawmunication',
                     headerRight: () => <HeaderShortcuts navigation={navigation} />,
                     headerLeft: () => <HeaderHomeButton navigation={navigation} />,
                 })}
@@ -130,13 +132,19 @@ export default function AppNavigator() {
                     tabBarButton: () => null,
                 }}
             >
-                {(props) => (
-                    <ProfileSetupScreen
-                        {...props}
-                        editMode={true}
-                        onComplete={() => props.navigation.goBack()}
-                    />
-                )}
+                {(props) => {
+                    const returnTo =
+                        (props.route.params as { returnTo?: 'Settings' | 'Profile' } | undefined)?.returnTo ??
+                        'Profile';
+                    return (
+                        <ProfileSetupScreen
+                            {...props}
+                            editMode={true}
+                            onCancel={() => props.navigation.navigate(returnTo as never)}
+                            onComplete={() => props.navigation.navigate(returnTo as never)}
+                        />
+                    );
+                }}
             </Tab.Screen>
         </Tab.Navigator>
     );

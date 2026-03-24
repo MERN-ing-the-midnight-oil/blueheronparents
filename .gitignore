@@ -43,3 +43,6 @@ yarn-error.*
 
 # Firebase config (if not using env variables)
 # firebase.config.ts
+
+# developer private notes
+notes.txt

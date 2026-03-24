@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Switch, ScrollView, Alert, Pressable, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, StyleSheet, Switch, ScrollView, Alert, Pressable, ActivityIndicator, Linking, TextInput } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import {
     doc,
     getDoc,
@@ -21,6 +22,7 @@ import {
     DELETED_MESSAGE_PLACEHOLDER,
     DELETED_USER_PLACEHOLDER_ID
 } from '../constants/placeholders';
+import { isAdmin } from '../utils/admin';
 
 interface NotificationSettings {
     nestNotes: boolean;
@@ -29,6 +31,7 @@ interface NotificationSettings {
 }
 
 export default function SettingsScreen() {
+    const navigation = useNavigation();
     const [settings, setSettings] = useState<NotificationSettings>({
         nestNotes: true,
         messages: true,
@@ -36,10 +39,19 @@ export default function SettingsScreen() {
     });
     const [loading, setLoading] = useState(true);
     const [deletingAccount, setDeletingAccount] = useState(false);
+    const [userIsAdmin, setUserIsAdmin] = useState(false);
+    const [adminEmail, setAdminEmail] = useState('');
+    const [adminLoading, setAdminLoading] = useState(false);
 
     useEffect(() => {
         loadSettings();
+        checkAdminStatus();
     }, []);
+
+    const checkAdminStatus = async () => {
+        const adminStatus = await isAdmin();
+        setUserIsAdmin(adminStatus);
+    };
 
     const loadSettings = async () => {
         try {
@@ -79,10 +91,19 @@ export default function SettingsScreen() {
 
     const handleSupportLink = async () => {
         try {
-            await Linking.openURL('https://blueheronparents.com/support#account-deletion');
+            await Linking.openURL('https://MERN-ing-the-midnight-oil.github.io/blueheronparents/web-pages/support.html');
         } catch (error) {
             console.error('Error opening support link:', error);
-            Alert.alert('Unable to open link', 'Please visit blueheronparents.com/support for help.');
+            Alert.alert('Unable to open link', 'Please visit the support page for help.');
+        }
+    };
+
+    const handleRequestAccountDeletion = async () => {
+        try {
+            await Linking.openURL('https://MERN-ing-the-midnight-oil.github.io/blueheronparents/web-pages/support.html#account-deletion');
+        } catch (error) {
+            console.error('Error opening account deletion link:', error);
+            Alert.alert('Unable to open link', 'Please visit the support page for account deletion information.');
         }
     };
 
@@ -249,6 +270,80 @@ export default function SettingsScreen() {
         );
     };
 
+    const handleToggleAdmin = async (email: string, makeAdmin: boolean) => {
+        if (!email.trim()) {
+            Alert.alert('Error', 'Please enter an email address');
+            return;
+        }
+
+        setAdminLoading(true);
+        try {
+            // Find user by email
+            const usersSnapshot = await getDocs(query(collection(db, 'users'), where('email', '==', email.trim().toLowerCase())));
+            
+            if (usersSnapshot.empty) {
+                Alert.alert('User not found', `No user found with email: ${email}`);
+                setAdminLoading(false);
+                return;
+            }
+
+            const userDoc = usersSnapshot.docs[0];
+            await updateDoc(userDoc.ref, { isAdmin: makeAdmin });
+
+            Alert.alert(
+                'Success',
+                makeAdmin
+                    ? `${email} has been granted admin privileges`
+                    : `Admin privileges removed from ${email}`
+            );
+            setAdminEmail('');
+        } catch (error: any) {
+            console.error('Error updating admin status:', error);
+            Alert.alert('Error', error.message || 'Failed to update admin status');
+        } finally {
+            setAdminLoading(false);
+        }
+    };
+
+    const handleAddAdmin = () => {
+        if (!adminEmail.trim()) {
+            Alert.alert('Error', 'Please enter an email address');
+            return;
+        }
+
+        Alert.alert(
+            'Grant Admin Access',
+            `Grant admin privileges to ${adminEmail}? They will be able to moderate posts and comments.`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Grant Admin',
+                    onPress: () => handleToggleAdmin(adminEmail, true),
+                },
+            ]
+        );
+    };
+
+    const handleRemoveAdmin = () => {
+        if (!adminEmail.trim()) {
+            Alert.alert('Error', 'Please enter an email address');
+            return;
+        }
+
+        Alert.alert(
+            'Remove Admin Access',
+            `Remove admin privileges from ${adminEmail}?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Remove Admin',
+                    style: 'destructive',
+                    onPress: () => handleToggleAdmin(adminEmail, false),
+                },
+            ]
+        );
+    };
+
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
@@ -259,6 +354,24 @@ export default function SettingsScreen() {
 
     return (
         <ScrollView style={styles.container}>
+            <View style={styles.profileSection}>
+                <Text style={styles.sectionTitle}>Your profile</Text>
+                <Text style={styles.sectionDescription}>
+                    Name, photo, phone, children, and what other parents can see
+                </Text>
+                <Text style={styles.profileFieldLabel}>Email</Text>
+                <Text style={styles.profileEmailReadOnly}>{auth.currentUser?.email ?? ''}</Text>
+                <Text style={styles.profileEmailNote}>
+                    Email is tied to your sign-in and cannot be changed here.
+                </Text>
+                <Pressable
+                    style={styles.editProfileFromSettingsButton}
+                    onPress={() => (navigation as any).navigate('EditProfile', { returnTo: 'Settings' })}
+                >
+                    <Text style={styles.editProfileFromSettingsButtonText}>Edit profile</Text>
+                </Pressable>
+            </View>
+
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Push Notifications</Text>
                 <Text style={styles.sectionDescription}>
@@ -267,7 +380,7 @@ export default function SettingsScreen() {
 
                 <View style={styles.settingRow}>
                     <View style={styles.settingInfo}>
-                        <Text style={styles.settingLabel}>Nest News</Text>
+                        <Text style={styles.settingLabel}>Nest Nuggets</Text>
                         <Text style={styles.settingDescription}>
                             New posts on the bulletin board
                         </Text>
@@ -317,11 +430,68 @@ export default function SettingsScreen() {
                 </Text>
             </View>
 
+            {userIsAdmin && (
+                <View style={styles.adminSection}>
+                    <Text style={styles.sectionTitle}>🛡️ Admin Controls</Text>
+                    <Text style={styles.sectionDescription}>
+                        Manage admin privileges for community members
+                    </Text>
+
+                    <View style={styles.adminInputContainer}>
+                        <TextInput
+                            style={styles.adminInput}
+                            placeholder="Enter user email"
+                            value={adminEmail}
+                            onChangeText={setAdminEmail}
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                            editable={!adminLoading}
+                        />
+                    </View>
+
+                    <View style={styles.adminButtonRow}>
+                        <Pressable
+                            style={[styles.adminButton, styles.addAdminButton, adminLoading && styles.adminButtonDisabled]}
+                            onPress={handleAddAdmin}
+                            disabled={adminLoading}
+                        >
+                            <Text style={styles.adminButtonText}>Grant Admin</Text>
+                        </Pressable>
+
+                        <Pressable
+                            style={[styles.adminButton, styles.removeAdminButton, adminLoading && styles.adminButtonDisabled]}
+                            onPress={handleRemoveAdmin}
+                            disabled={adminLoading}
+                        >
+                            <Text style={styles.adminButtonText}>Remove Admin</Text>
+                        </Pressable>
+                    </View>
+
+                    <View style={styles.infoSection}>
+                        <Text style={styles.infoText}>
+                            ⚠️ Admins can delete any post or comment. Use this privilege responsibly.
+                        </Text>
+                    </View>
+                </View>
+            )}
+
             <View style={styles.dangerSection}>
                 <Text style={styles.dangerTitle}>Delete Account</Text>
                 <Text style={styles.dangerDescription}>
                     Permanently remove your account, profile, messages, posts, and notification preferences.
                 </Text>
+                
+                <Pressable
+                    style={styles.requestDeletionLink}
+                    onPress={handleRequestAccountDeletion}
+                >
+                    <Text style={styles.requestDeletionLinkText}>
+                        Learn how to request account deletion
+                    </Text>
+                </Pressable>
+
+                <Text style={styles.orText}>or</Text>
+
                 <Pressable
                     style={[styles.deleteButton, deletingAccount && styles.deleteButtonDisabled]}
                     onPress={handleDeleteAccount}
@@ -330,7 +500,7 @@ export default function SettingsScreen() {
                     {deletingAccount ? (
                         <ActivityIndicator color="#fff" />
                     ) : (
-                        <Text style={styles.deleteButtonText}>Delete Account</Text>
+                        <Text style={styles.deleteButtonText}>Delete Account Now</Text>
                     )}
                 </Pressable>
 
@@ -346,6 +516,47 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#f5f5f5',
+    },
+    profileSection: {
+        backgroundColor: '#fff',
+        marginTop: 20,
+        marginHorizontal: 0,
+        padding: 20,
+        borderTopWidth: 1,
+        borderBottomWidth: 1,
+        borderColor: '#e0e0e0',
+    },
+    profileFieldLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#555',
+        marginBottom: 6,
+    },
+    profileEmailReadOnly: {
+        backgroundColor: '#f5f5f5',
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        color: '#333',
+        marginBottom: 8,
+    },
+    profileEmailNote: {
+        fontSize: 13,
+        color: '#888',
+        marginBottom: 16,
+    },
+    editProfileFromSettingsButton: {
+        backgroundColor: '#2c5f7c',
+        paddingVertical: 14,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    editProfileFromSettingsButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '600',
     },
     loadingContainer: {
         flex: 1,
@@ -447,5 +658,74 @@ const styles = StyleSheet.create({
         color: '#2c5f7c',
         fontWeight: '600',
         textAlign: 'center',
+    },
+    requestDeletionLink: {
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        backgroundColor: '#f0f8ff',
+        borderWidth: 1,
+        borderColor: '#2c5f7c',
+        marginBottom: 16,
+        alignItems: 'center',
+    },
+    requestDeletionLinkText: {
+        fontSize: 15,
+        color: '#2c5f7c',
+        fontWeight: '600',
+        textAlign: 'center',
+    },
+    orText: {
+        fontSize: 14,
+        color: '#666',
+        textAlign: 'center',
+        marginBottom: 12,
+        fontWeight: '500',
+    },
+    adminSection: {
+        backgroundColor: '#fff',
+        marginTop: 20,
+        marginHorizontal: 20,
+        padding: 20,
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: '#2c5f7c',
+    },
+    adminInputContainer: {
+        marginTop: 15,
+        marginBottom: 15,
+    },
+    adminInput: {
+        backgroundColor: '#f9f9f9',
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+    },
+    adminButtonRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginBottom: 10,
+    },
+    adminButton: {
+        flex: 1,
+        padding: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    addAdminButton: {
+        backgroundColor: '#2c5f7c',
+    },
+    removeAdminButton: {
+        backgroundColor: '#d32f2f',
+    },
+    adminButtonDisabled: {
+        opacity: 0.6,
+    },
+    adminButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '600',
     },
 });

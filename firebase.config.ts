@@ -1,7 +1,13 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import {
+  getAuth,
+  initializeAuth,
+  getReactNativePersistence,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'AIzaSyBIae6Q2QpV0tw7wM2pN-ZeE5go7uNOQ3A',
@@ -45,9 +51,25 @@ let storage;
 
 try {
   app = initializeApp(firebaseConfig);
-  
-  // Initialize services with timeout handling
-  auth = getAuth(app);
+
+  // Web uses default browser persistence; native needs AsyncStorage or auth resets every cold start.
+  if (Platform.OS === "web") {
+    auth = getAuth(app);
+  } else {
+    try {
+      auth = initializeAuth(app, {
+        persistence: getReactNativePersistence(AsyncStorage),
+      });
+    } catch (e: unknown) {
+      // Hot reload / duplicate init: reuse the existing singleton.
+      const code = (e as { code?: string })?.code;
+      if (code === "auth/already-initialized") {
+        auth = getAuth(app);
+      } else {
+        throw e;
+      }
+    }
+  }
   db = getFirestore(app);
   storage = getStorage(app);
   

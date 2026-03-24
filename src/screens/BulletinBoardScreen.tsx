@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, FlatList, Alert, Modal, Image, SafeAreaView } from 'react-native';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, getDocs, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, getDocs, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, storage } from '../../firebase.config';
 import { sendNotificationToUsers } from '../utils/notifications';
+import { isAdmin } from '../utils/admin';
 
 interface Comment {
     id: string;
@@ -40,8 +42,18 @@ export default function BulletinBoardScreen() {
     const [comments, setComments] = useState<Comment[]>([]);
     const [commentText, setCommentText] = useState('');
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    const [userIsAdmin, setUserIsAdmin] = useState(false);
+    const [nestNewsPinnedPostIds, setNestNewsPinnedPostIds] = useState<string[]>([]);
+    const [nestNewsHiddenPostIds, setNestNewsHiddenPostIds] = useState<string[]>([]);
 
     useEffect(() => {
+        // Check if user is admin
+        const checkAdminStatus = async () => {
+            const adminStatus = await isAdmin();
+            setUserIsAdmin(adminStatus);
+        };
+        checkAdminStatus();
+
         const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -71,6 +83,55 @@ export default function BulletinBoardScreen() {
 
         return unsubscribe;
     }, []);
+
+    useEffect(() => {
+        let unsubscribeUser: (() => void) | undefined;
+        const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+            unsubscribeUser?.();
+            unsubscribeUser = undefined;
+            if (!user) {
+                setNestNewsPinnedPostIds([]);
+                setNestNewsHiddenPostIds([]);
+                return;
+            }
+            const userRef = doc(db, 'users', user.uid);
+            unsubscribeUser = onSnapshot(userRef, (snap) => {
+                if (!snap.exists()) {
+                    setNestNewsPinnedPostIds([]);
+                    setNestNewsHiddenPostIds([]);
+                    return;
+                }
+                const data = snap.data() as any;
+                setNestNewsPinnedPostIds(Array.isArray(data.nestNewsPinnedPostIds) ? data.nestNewsPinnedPostIds : []);
+                setNestNewsHiddenPostIds(Array.isArray(data.nestNewsHiddenPostIds) ? data.nestNewsHiddenPostIds : []);
+            });
+        });
+        return () => {
+            unsubscribeUser?.();
+            unsubscribeAuth();
+        };
+    }, []);
+
+    const displayedPosts = useMemo(() => {
+        const hidden = new Set(nestNewsHiddenPostIds);
+        const visible = posts.filter((p) => !hidden.has(p.id));
+        const pinnedOrder = nestNewsPinnedPostIds;
+        const pinnedSet = new Set(pinnedOrder);
+        const pinned: Post[] = [];
+        for (const id of pinnedOrder) {
+            const p = visible.find((x) => x.id === id);
+            if (p) pinned.push(p);
+        }
+        const getTime = (t: any) => {
+            if (!t) return 0;
+            if (typeof t.toDate === 'function') return t.toDate().getTime();
+            return 0;
+        };
+        const rest = visible
+            .filter((p) => !pinnedSet.has(p.id))
+            .sort((a, b) => getTime(b.createdAt) - getTime(a.createdAt));
+        return [...pinned, ...rest];
+    }, [posts, nestNewsHiddenPostIds, nestNewsPinnedPostIds]);
 
     useEffect(() => {
         if (!viewingComments) return;
@@ -295,7 +356,7 @@ export default function BulletinBoardScreen() {
     const handleDelete = async (postId: string) => {
         Alert.alert(
             'Delete Post',
-            'Are you sure you want to delete this post?',
+            'This removes the post for everyone.',
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
@@ -303,7 +364,95 @@ export default function BulletinBoardScreen() {
                     style: 'destructive',
                     onPress: async () => {
                         try {
+                            // Delete associated comments
+                            const commentsSnapshot = await getDocs(collection(db, 'posts', postId, 'comments'));
+                            await Promise.all(commentsSnapshot.docs.map(commentDoc => deleteDoc(commentDoc.ref)));
+                            
+                            // Delete the post
                             await deleteDoc(doc(db, 'posts', postId));
+                        } catch (error: any) {
+                            Alert.alert('Error', error.message);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleTogglePin = async (postId: string) => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+
+        try {
+            const userRef = doc(db, 'users', uid);
+            const snap = await getDoc(userRef);
+            const current = (snap.exists() ? (snap.data() as any).nestNewsPinnedPostIds : null) as string[] | undefined;
+            const list = Array.isArray(current) ? [...current] : [];
+            const isPinned = list.includes(postId);
+            const next = isPinned
+                ? list.filter((id) => id !== postId)
+                : [postId, ...list.filter((id) => id !== postId)];
+            await setDoc(userRef, { nestNewsPinnedPostIds: next }, { merge: true });
+        } catch (error: any) {
+            Alert.alert('Error', error.message);
+        }
+    };
+
+    const handleHideFromFeed = async (postId: string) => {
+        Alert.alert(
+            'Hide from your feed?',
+            'You can still find this post if someone shares a link; it only hides it here for you.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Hide',
+                    style: 'destructive',
+                    onPress: async () => {
+                        const uid = auth.currentUser?.uid;
+                        if (!uid) return;
+                        try {
+                            const userRef = doc(db, 'users', uid);
+                            const snap = await getDoc(userRef);
+                            const data = snap.exists() ? (snap.data() as any) : {};
+                            const hidden = new Set(
+                                Array.isArray(data.nestNewsHiddenPostIds) ? data.nestNewsHiddenPostIds : []
+                            );
+                            hidden.add(postId);
+                            const pinned = Array.isArray(data.nestNewsPinnedPostIds)
+                                ? (data.nestNewsPinnedPostIds as string[]).filter((id) => id !== postId)
+                                : [];
+                            await setDoc(
+                                userRef,
+                                { nestNewsHiddenPostIds: [...hidden], nestNewsPinnedPostIds: pinned },
+                                { merge: true }
+                            );
+                        } catch (error: any) {
+                            Alert.alert('Error', error.message);
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    const handleDeleteComment = async (commentId: string, postId: string) => {
+        Alert.alert(
+            'Delete Comment',
+            'Are you sure you want to delete this comment?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await deleteDoc(doc(db, 'posts', postId, 'comments', commentId));
+                            // Update comment count
+                            if (viewingComments) {
+                                await updateDoc(doc(db, 'posts', postId), {
+                                    commentCount: Math.max((viewingComments.commentCount || 0) - 1, 0)
+                                });
+                            }
                         } catch (error: any) {
                             Alert.alert('Error', error.message);
                         }
@@ -317,6 +466,7 @@ export default function BulletinBoardScreen() {
         if (!viewingComments || !commentText.trim()) return;
 
         try {
+            const metadata = await getAuthorMetadata(auth.currentUser?.uid);
             await addDoc(collection(db, 'posts', viewingComments.id, 'comments'), {
                 text: commentText,
                 authorDisplayName: metadata.authorDisplayName,
@@ -394,7 +544,7 @@ export default function BulletinBoardScreen() {
             </View>
 
             <FlatList
-                data={posts}
+                data={displayedPosts}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
                     <View style={styles.postCard}>
@@ -446,29 +596,55 @@ export default function BulletinBoardScreen() {
                                 </Text>
                             </Pressable>
 
-                            {isMyPost(item.userId) && (
-                                <>
-                                    <Pressable
-                                        style={styles.actionButton}
-                                        onPress={() => handleEdit(item)}
-                                    >
-                                        <Text style={styles.actionText}>✏️ Edit</Text>
-                                    </Pressable>
+                            {auth.currentUser?.uid && (
+                                <Pressable
+                                    style={styles.actionButton}
+                                    onPress={() => handleTogglePin(item.id)}
+                                >
+                                    <Text style={styles.actionText}>
+                                        {nestNewsPinnedPostIds.includes(item.id) ? '📌 Unpin' : '📌 Pin'}
+                                    </Text>
+                                </Pressable>
+                            )}
 
-                                    <Pressable
-                                        style={styles.actionButton}
-                                        onPress={() => handleDelete(item.id)}
-                                    >
-                                        <Text style={[styles.actionText, styles.deleteText]}>🗑️ Delete</Text>
-                                    </Pressable>
-                                </>
+                            {isMyPost(item.userId) && (
+                                <Pressable
+                                    style={styles.actionButton}
+                                    onPress={() => handleEdit(item)}
+                                >
+                                    <Text style={styles.actionText}>✏️ Edit</Text>
+                                </Pressable>
+                            )}
+
+                            {(isMyPost(item.userId) || userIsAdmin) && (
+                                <Pressable
+                                    style={styles.actionButton}
+                                    onPress={() => handleDelete(item.id)}
+                                >
+                                    <Text style={[styles.actionText, styles.deleteText]}>
+                                        {userIsAdmin && !isMyPost(item.userId) ? '🛡️ Admin Delete' : '🗑️ Delete'}
+                                    </Text>
+                                </Pressable>
+                            )}
+
+                            {!isMyPost(item.userId) && !userIsAdmin && auth.currentUser?.uid && (
+                                <Pressable
+                                    style={styles.actionButton}
+                                    onPress={() => handleHideFromFeed(item.id)}
+                                >
+                                    <Text style={[styles.actionText, styles.hideText]}>🙈 Hide</Text>
+                                </Pressable>
                             )}
                         </View>
                     </View>
                 )}
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>No posts yet. Be the first to share!</Text>
+                        <Text style={styles.emptyText}>
+                            {posts.length > 0
+                                ? "You've hidden every visible post. New posts will still appear here."
+                                : 'No posts yet. Be the first to share!'}
+                        </Text>
                     </View>
                 }
             />
@@ -550,30 +726,45 @@ export default function BulletinBoardScreen() {
                         <FlatList
                             data={comments}
                             keyExtractor={(item) => item.id}
-                            renderItem={({ item }) => (
-                                <View style={styles.commentCard}>
-                                    <View style={styles.commentAuthorRow}>
-                                        {item.authorProfileImageUrl ? (
-                                            <Image
-                                                source={{ uri: item.authorProfileImageUrl }}
-                                                style={styles.commentAvatar}
-                                            />
-                                        ) : (
-                                            <View style={styles.commentAvatarPlaceholder}>
-                                                <Text style={styles.commentAvatarInitial}>
-                                                    {item.authorDisplayName?.charAt(0).toUpperCase()}
-                                                </Text>
+                            renderItem={({ item }) => {
+                                const isMyComment = item.userId === auth.currentUser?.uid;
+                                return (
+                                    <View style={styles.commentCard}>
+                                        <View style={styles.commentHeaderRow}>
+                                            <View style={styles.commentAuthorRow}>
+                                                {item.authorProfileImageUrl ? (
+                                                    <Image
+                                                        source={{ uri: item.authorProfileImageUrl }}
+                                                        style={styles.commentAvatar}
+                                                    />
+                                                ) : (
+                                                    <View style={styles.commentAvatarPlaceholder}>
+                                                        <Text style={styles.commentAvatarInitial}>
+                                                            {item.authorDisplayName?.charAt(0).toUpperCase()}
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                                <View>
+                                                    <Text style={styles.commentAuthorName}>{item.authorDisplayName}</Text>
+                                                    <Text style={styles.commentAuthorEmail}>{item.authorEmail}</Text>
+                                                </View>
                                             </View>
-                                        )}
-                                        <View>
-                                            <Text style={styles.commentAuthorName}>{item.authorDisplayName}</Text>
-                                            <Text style={styles.commentAuthorEmail}>{item.authorEmail}</Text>
+                                            {(isMyComment || userIsAdmin) && viewingComments && (
+                                                <Pressable
+                                                    style={styles.commentDeleteButton}
+                                                    onPress={() => handleDeleteComment(item.id, viewingComments.id)}
+                                                >
+                                                    <Text style={styles.commentDeleteText}>
+                                                        {userIsAdmin && !isMyComment ? '🛡️' : '🗑️'}
+                                                    </Text>
+                                                </Pressable>
+                                            )}
                                         </View>
+                                        <Text style={styles.commentText}>{item.text}</Text>
+                                        <Text style={styles.commentTime}>{formatDate(item.createdAt)}</Text>
                                     </View>
-                                    <Text style={styles.commentText}>{item.text}</Text>
-                                    <Text style={styles.commentTime}>{formatDate(item.createdAt)}</Text>
-                                </View>
-                            )}
+                                );
+                            }}
                             ListEmptyComponent={
                                 <View style={styles.emptyComments}>
                                     <Text style={styles.emptyCommentsText}>No comments yet. Be the first!</Text>
@@ -748,6 +939,7 @@ const styles = StyleSheet.create({
     },
     actionsRow: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         borderTopWidth: 1,
         borderTopColor: '#f0f0f0',
         paddingTop: 10,
@@ -763,6 +955,9 @@ const styles = StyleSheet.create({
     },
     deleteText: {
         color: '#d32f2f',
+    },
+    hideText: {
+        color: '#666',
     },
     emptyContainer: {
         padding: 40,
@@ -859,12 +1054,17 @@ const styles = StyleSheet.create({
         borderBottomWidth: 2,
         borderBottomColor: '#e0e0e0',
     },
-    originalAuthor: {
+    commentHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: 6,
+    },
     commentAuthorRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 6,
         gap: 10,
+        flex: 1,
     },
     commentAvatar: {
         width: 32,
@@ -892,10 +1092,12 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#666',
     },
-        fontWeight: '600',
-        fontSize: 14,
-        color: '#2c5f7c',
-        marginBottom: 5,
+    commentDeleteButton: {
+        padding: 5,
+        marginLeft: 10,
+    },
+    commentDeleteText: {
+        fontSize: 16,
     },
     originalText: {
         fontSize: 16,

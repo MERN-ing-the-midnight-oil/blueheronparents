@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     View,
     Text,
@@ -9,8 +9,11 @@ import {
     Alert,
     Modal,
     Image,
-    SafeAreaView
+    SafeAreaView,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
     collection,
     query,
@@ -26,6 +29,7 @@ import {
     updateDoc
 } from 'firebase/firestore';
 import { db, auth } from '../../firebase.config';
+import { Ionicons } from '@expo/vector-icons';
 import { sendNotificationToUsers } from '../utils/notifications';
 import {
     DELETED_MESSAGE_PLACEHOLDER,
@@ -65,6 +69,8 @@ interface ConversationWithUser extends Conversation {
 }
 
 export default function MessagesScreen() {
+    const insets = useSafeAreaInsets();
+    const messagesListRef = useRef<FlatList<Message>>(null);
     const [conversations, setConversations] = useState<ConversationWithUser[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [showNewMessage, setShowNewMessage] = useState(false);
@@ -72,6 +78,7 @@ export default function MessagesScreen() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [messageText, setMessageText] = useState('');
     const [loading, setLoading] = useState(true);
+    const [directoryExpanded, setDirectoryExpanded] = useState(true);
 
     const getUserDisplayName = (user: User) => {
         if (user.displayName && user.displayName.trim().length > 0) {
@@ -90,6 +97,12 @@ export default function MessagesScreen() {
         const firstChar = displayName.charAt(0);
         return firstChar ? firstChar.toUpperCase() : '?';
     };
+
+    const sortedUsers = useMemo(() => {
+        return [...users].sort((a, b) =>
+            getUserDisplayName(a).localeCompare(getUserDisplayName(b), undefined, { sensitivity: 'base' })
+        );
+    }, [users]);
 
     useEffect(() => {
         loadUsers();
@@ -145,9 +158,25 @@ export default function MessagesScreen() {
         try {
             const q = query(collection(db, 'users'));
             const querySnapshot = await getDocs(q);
+            const currentUid = auth.currentUser?.uid;
+            console.log('[MessagesScreen loadUsers] Firestore users collection', {
+                documentCount: querySnapshot.docs.length,
+                currentUserUid: currentUid ?? '(not signed in)',
+            });
+
             const usersData = querySnapshot.docs
                 .map(doc => {
-                    const data = doc.data() as Partial<User>;
+                    const data = doc.data() as Partial<User> & Record<string, unknown>;
+                    console.log('[MessagesScreen loadUsers] raw user document', {
+                        id: doc.id,
+                        displayName: data.displayName,
+                        displayNameType: typeof data.displayName,
+                        email: data.email,
+                        emailType: typeof data.email,
+                        profileImageUrl: data.profileImageUrl,
+                        topLevelKeys: Object.keys(data),
+                    });
+
                     return {
                         id: doc.id,
                         displayName: typeof data.displayName === 'string' ? data.displayName : '',
@@ -157,6 +186,19 @@ export default function MessagesScreen() {
                     } as User;
                 })
                 .filter(user => user.id !== auth.currentUser?.uid); // Exclude current user
+
+            console.log(
+                '[MessagesScreen loadUsers] after filter (excluding self), normalized for UI',
+                usersData.map((u) => ({
+                    id: u.id,
+                    displayName: u.displayName,
+                    email: u.email,
+                    resolvedLabel:
+                        u.displayName?.trim() ||
+                        u.email?.trim() ||
+                        '(would show as Unknown Member)',
+                }))
+            );
             setUsers(usersData);
         } catch (error: any) {
             Alert.alert('Error', error.message);
@@ -518,10 +560,61 @@ export default function MessagesScreen() {
 
     const isReadonlyConversation = showConversation?.otherUser.id === DELETED_USER_PLACEHOLDER_ID;
 
+    const renderDirectoryMember = (member: User) => (
+        <View key={member.id} style={styles.directoryRow}>
+            {member.profileImageUrl ? (
+                <Image source={{ uri: member.profileImageUrl }} style={styles.directoryAvatar} />
+            ) : (
+                <View style={[styles.directoryAvatar, styles.avatarPlaceholder]}>
+                    <Text style={styles.avatarText}>{getUserInitial(member)}</Text>
+                </View>
+            )}
+            <Text style={styles.directoryName} numberOfLines={1}>
+                {getUserDisplayName(member)}
+            </Text>
+            <Pressable
+                style={styles.directoryMessageButton}
+                onPress={() => startConversation(member.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Message ${getUserDisplayName(member)}`}
+            >
+                <Ionicons name="chatbubble-outline" size={22} color="#2c5f7c" />
+            </Pressable>
+        </View>
+    );
+
+    const directoryHeader = (
+        <View style={styles.directorySection}>
+            <Pressable
+                style={styles.directoryToggle}
+                onPress={() => setDirectoryExpanded((e) => !e)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: directoryExpanded }}
+            >
+                <Text style={styles.directoryToggleLabel}>Member directory</Text>
+                <Text style={styles.directoryCount}>({sortedUsers.length})</Text>
+                <Ionicons
+                    name={directoryExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={22}
+                    color="#2c5f7c"
+                />
+            </Pressable>
+            {directoryExpanded && (
+                <View style={styles.directoryList}>
+                    {sortedUsers.length === 0 ? (
+                        <Text style={styles.directoryEmpty}>No other members yet.</Text>
+                    ) : (
+                        sortedUsers.map(renderDirectoryMember)
+                    )}
+                </View>
+            )}
+        </View>
+    );
+
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Messages</Text>
+                <Text style={styles.headerTitle}>Cawmunication</Text>
                 <Pressable
                     style={styles.newMessageButton}
                     onPress={() => setShowNewMessage(true)}
@@ -534,6 +627,7 @@ export default function MessagesScreen() {
                 data={conversations}
                 keyExtractor={(item) => item.id}
                 renderItem={renderConversation}
+                ListHeaderComponent={directoryHeader}
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyTitle}>No conversations yet</Text>
@@ -570,49 +664,66 @@ export default function MessagesScreen() {
 
             {/* Conversation Modal */}
             <Modal visible={!!showConversation} animationType="slide">
-                <SafeAreaView style={styles.conversationModal}>
-                    <View style={styles.conversationHeader}>
-                        <Pressable onPress={() => setShowConversation(null)}>
-                            <Text style={styles.backButton}>← Back</Text>
-                        </Pressable>
-                        <Text style={styles.conversationTitle}>
-                            {showConversation?.otherUser.displayName}
-                        </Text>
-                        <View style={styles.backButton} />
-                    </View>
-
-                    <FlatList
-                        data={messages}
-                        keyExtractor={(item) => item.id}
-                        renderItem={renderMessage}
-                        style={styles.messagesList}
-                    />
-
-                    <View style={[styles.messageInputContainer, isReadonlyConversation && styles.readonlyConversation]}>
-                        <TextInput
-                            style={styles.messageInput}
-                            value={messageText}
-                            onChangeText={setMessageText}
-                            placeholder="Type a message..."
-                            multiline
-                            editable={!isReadonlyConversation}
-                        />
-                        <Pressable
-                            style={[styles.sendButton, (isReadonlyConversation || !messageText.trim()) && styles.sendButtonDisabled]}
-                            onPress={() => sendMessage()}
-                            disabled={isReadonlyConversation || !messageText.trim()}
-                        >
-                            <Text style={styles.sendButtonText}>Send</Text>
-                        </Pressable>
-                    </View>
-                    {isReadonlyConversation && (
-                        <View style={styles.readonlyNotice}>
-                            <Text style={styles.readonlyNoticeText}>
-                                You can no longer message this member because their account was deleted.
+                <KeyboardAvoidingView
+                    style={styles.keyboardAvoidingRoot}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+                >
+                    <SafeAreaView style={styles.conversationModal}>
+                        <View style={styles.conversationHeader}>
+                            <Pressable onPress={() => setShowConversation(null)}>
+                                <Text style={styles.backButton}>← Back</Text>
+                            </Pressable>
+                            <Text style={styles.conversationTitle}>
+                                {showConversation?.otherUser.displayName}
                             </Text>
+                            <View style={styles.backButton} />
                         </View>
-                    )}
-                </SafeAreaView>
+
+                        <FlatList
+                            ref={messagesListRef}
+                            data={messages}
+                            keyExtractor={(item) => item.id}
+                            renderItem={renderMessage}
+                            style={styles.messagesList}
+                            keyboardShouldPersistTaps="handled"
+                            keyboardDismissMode="interactive"
+                            onContentSizeChange={() =>
+                                messagesListRef.current?.scrollToEnd({ animated: false })
+                            }
+                        />
+
+                        <View style={[styles.messageInputContainer, isReadonlyConversation && styles.readonlyConversation]}>
+                            <TextInput
+                                style={styles.messageInput}
+                                value={messageText}
+                                onChangeText={setMessageText}
+                                placeholder="Type a message..."
+                                multiline
+                                editable={!isReadonlyConversation}
+                                onFocus={() => {
+                                    requestAnimationFrame(() =>
+                                        messagesListRef.current?.scrollToEnd({ animated: true })
+                                    );
+                                }}
+                            />
+                            <Pressable
+                                style={[styles.sendButton, (isReadonlyConversation || !messageText.trim()) && styles.sendButtonDisabled]}
+                                onPress={() => sendMessage()}
+                                disabled={isReadonlyConversation || !messageText.trim()}
+                            >
+                                <Text style={styles.sendButtonText}>Send</Text>
+                            </Pressable>
+                        </View>
+                        {isReadonlyConversation && (
+                            <View style={styles.readonlyNotice}>
+                                <Text style={styles.readonlyNoticeText}>
+                                    You can no longer message this member because their account was deleted.
+                                </Text>
+                            </View>
+                        )}
+                    </SafeAreaView>
+                </KeyboardAvoidingView>
             </Modal>
         </View>
     );
@@ -652,6 +763,64 @@ const styles = StyleSheet.create({
     newMessageButtonText: {
         color: '#fff',
         fontWeight: '600',
+    },
+    directorySection: {
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#e0e0e0',
+    },
+    directoryToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        gap: 8,
+    },
+    directoryToggleLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+    },
+    directoryCount: {
+        fontSize: 14,
+        color: '#666',
+        flex: 1,
+    },
+    directoryList: {
+        paddingBottom: 8,
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+    },
+    directoryRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f5f5f5',
+    },
+    directoryAvatar: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        marginRight: 12,
+    },
+    directoryName: {
+        flex: 1,
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#333',
+    },
+    directoryMessageButton: {
+        padding: 10,
+        marginRight: -4,
+    },
+    directoryEmpty: {
+        paddingHorizontal: 15,
+        paddingVertical: 14,
+        fontSize: 14,
+        color: '#888',
+        fontStyle: 'italic',
     },
     conversationCard: {
         flexDirection: 'row',
@@ -771,6 +940,9 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#666',
         marginBottom: 4,
+    },
+    keyboardAvoidingRoot: {
+        flex: 1,
     },
     conversationModal: {
         flex: 1,

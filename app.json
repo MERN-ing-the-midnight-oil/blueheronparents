@@ -2,7 +2,7 @@
   "expo": {
     "name": "Blue Heron Parents",
     "slug": "blueheronparents",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.rhyssmoker.blueheronparents",
-      "buildNumber": "8",
+      "buildNumber": "11",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library so you can share photos in posts and update your profile picture.",
         "NSCameraUsageDescription": "This app needs access to your camera so you can take photos to share in posts and update your profile picture.",
@@ -23,7 +23,8 @@
       }
     },
     "android": {
-      "versionCode": 8,
+      "softwareKeyboardLayoutMode": "resize",
+      "versionCode": 10,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#2c5f7c"
@@ -42,29 +43,38 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-  [
-    "expo-image-picker",
-    {
-      "photosPermission": "This app needs access to your photo library so you can share photos in posts and update your profile picture.",
-      "cameraPermission": "This app needs access to your camera so you can take photos to share in posts and update your profile picture."
-    }
-  ],
-  [
-    "expo-notifications",
-    {
-      "color": "#2c5f7c",
-      "sounds": [],
-      "mode": "production"
-    }
-  ]
-],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app needs access to your photo library so you can share photos in posts and update your profile picture.",
+          "cameraPermission": "This app needs access to your camera so you can take photos to share in posts and update your profile picture."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2c5f7c",
+          "sounds": [],
+          "mode": "production"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "buildReactNativeFromSource": true
+          }
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "819868e1-e12c-44d2-b3b0-a909e4794728"
-      }
+      },
+      "googlePlayShortDescription": "Not affiliated with any school or business. Private parent app."
     },
     "owner": "rhyssmoker",
-    "description": "A private communication app for Blue Heron School parents to connect, share updates, and coordinate events.",
+    "description": "Welcome. This app is not affiliated with any business or school. It is a private platform for a specific group of preschool parents to plan play dates, give hand-me-downs, and organize birthday parties, etc.\n\nUse the app to connect with your community: Nest Nuggets, messaging, calendar events, and member profiles.",
     "primaryColor": "#2c5f7c"
   }
 }

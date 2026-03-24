@@ -5,6 +5,7 @@ import { signOut } from 'firebase/auth';
 import { db, auth } from '../../firebase.config';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getAgeLabel } from '../utils/age';
+import ProfileSetupScreen from './ProfileSetupScreen';
 
 interface Child {
     name: string;
@@ -29,6 +30,13 @@ export default function ProfileScreen() {
     const navigation = useNavigation();
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
+    const [editing, setEditing] = useState(false);
+
+    useEffect(() => {
+        navigation.setOptions({
+            title: editing ? 'Edit Profile' : 'Profile',
+        });
+    }, [editing, navigation]);
 
     // Reload profile when screen comes into focus
     useFocusEffect(
@@ -53,7 +61,7 @@ export default function ProfileScreen() {
     };
 
     const handleEditProfile = () => {
-        (navigation as any).navigate('EditProfile');
+        setEditing(true);
     };
 
     const handleSignOut = () => {
@@ -94,11 +102,24 @@ export default function ProfileScreen() {
                 </Text>
                 <Pressable
                     style={styles.completeProfileButton}
-                    onPress={() => (navigation as any).navigate('EditProfile')}
+                    onPress={() => (navigation as any).navigate('EditProfile', { returnTo: 'Profile' })}
                 >
                     <Text style={styles.completeProfileButtonText}>Complete Profile Now</Text>
                 </Pressable>
             </View>
+        );
+    }
+
+    if (editing) {
+        return (
+            <ProfileSetupScreen
+                editMode
+                onCancel={() => setEditing(false)}
+                onComplete={() => {
+                    setEditing(false);
+                    loadProfile();
+                }}
+            />
         );
     }
 

@@ -6,9 +6,11 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from './firebase.config';
 import AppNavigator from './src/navigation/AppNavigator';
 import AuthScreen from './src/screens/AuthScreen';
+import DisclaimerScreen, { hasAcceptedDisclaimer } from './src/screens/DisclaimerScreen';
 import ProfileSetupScreen from './src/screens/ProfileSetupScreen';
 import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { registerForPushNotificationsAsync } from './src/utils/notifications';
 
@@ -46,6 +48,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [disclaimerAccepted, setDisclaimerAccepted] = useState<boolean | null>(null);
   const [profileComplete, setProfileComplete] = useState(false);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
@@ -85,6 +88,10 @@ export default function App() {
       await loadProfileStatus(currentUser);
     }
   };
+
+  useEffect(() => {
+    hasAcceptedDisclaimer().then(setDisclaimerAccepted);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -140,12 +147,20 @@ export default function App() {
     setProfileComplete(true);
   };
 
-  if (loading) {
+  if (loading || disclaimerAccepted === null) {
     return (
       <ErrorBoundary>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2c5f7c" />
         </View>
+      </ErrorBoundary>
+    );
+  }
+
+  if (!disclaimerAccepted) {
+    return (
+      <ErrorBoundary>
+        <DisclaimerScreen onAccepted={() => setDisclaimerAccepted(true)} />
       </ErrorBoundary>
     );
   }
@@ -189,9 +204,11 @@ export default function App() {
   // Logged in and profile complete - show main app
   return (
     <ErrorBoundary>
-      <NavigationContainer>
-        <AppNavigator />
-      </NavigationContainer>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <AppNavigator />
+        </NavigationContainer>
+      </SafeAreaProvider>
     </ErrorBoundary>
   );
 }

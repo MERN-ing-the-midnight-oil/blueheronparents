@@ -16,11 +16,13 @@ interface Child {
 interface ProfileSetupScreenProps {
     onComplete: () => void;
     editMode?: boolean;
+    /** When set with editMode, shows a cancel control to exit without saving */
+    onCancel?: () => void;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
-export default function ProfileSetupScreen({ onComplete, editMode = false }: ProfileSetupScreenProps) {
+export default function ProfileSetupScreen({ onComplete, editMode = false, onCancel }: ProfileSetupScreenProps) {
     const [displayName, setDisplayName] = useState('');
     const [phone, setPhone] = useState('');
     const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -136,10 +138,13 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
 
         setLoading(true);
         try {
-            let profileImageUrl = null;
+            let profileImageUrl: string | null | undefined;
             if (profileImage) {
                 profileImageUrl = await uploadProfileImage(profileImage);
+            } else if (!editMode) {
+                profileImageUrl = null;
             }
+            // editMode with no local image: omit profileImageUrl so merge keeps the stored URL
 
             const cleanedChildren: Array<{
                 name: string;
@@ -182,21 +187,23 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
                 });
             }
 
-            const profileData = {
+            const profileData: Record<string, unknown> = {
                 displayName,
-                email: auth.currentUser?.email,
+                email: auth.currentUser?.email ?? null,
                 phone: phone || null,
-                profileImageUrl,
                 children: cleanedChildren,
                 showEmail,
                 showPhone,
                 updatedAt: new Date(),
                 profileComplete: true,
             };
+            if (profileImageUrl !== undefined) {
+                profileData.profileImageUrl = profileImageUrl;
+            }
 
             // Only add createdAt if it's not edit mode
             if (!editMode) {
-                (profileData as any).createdAt = new Date();
+                profileData.createdAt = new Date();
             }
 
             await setDoc(doc(db, 'users', auth.currentUser!.uid), profileData, { merge: true });
@@ -219,6 +226,22 @@ export default function ProfileSetupScreen({ onComplete, editMode = false }: Pro
                 <Text style={styles.subtitle}>
                     {editMode ? 'Update your information' : 'Help other parents get to know you!'}
                 </Text>
+
+                {editMode && onCancel && (
+                    <Pressable onPress={onCancel} style={styles.cancelRow}>
+                        <Text style={styles.cancelText}>Cancel</Text>
+                    </Pressable>
+                )}
+
+                {editMode && (
+                    <View style={styles.emailReadOnlyBlock}>
+                        <Text style={styles.label}>Email</Text>
+                        <Text style={styles.readOnlyEmailText}>{auth.currentUser?.email ?? ''}</Text>
+                        <Text style={styles.readOnlyEmailHint}>
+                            Email is tied to your account and cannot be changed here.
+                        </Text>
+                    </View>
+                )}
 
                 <Pressable style={styles.imagePickerContainer} onPress={pickImage}>
                     {profileImage ? (
@@ -374,6 +397,32 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#666',
         marginBottom: 30,
+    },
+    emailReadOnlyBlock: {
+        marginBottom: 24,
+    },
+    readOnlyEmailText: {
+        backgroundColor: '#f0f0f0',
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        color: '#555',
+        marginBottom: 6,
+    },
+    readOnlyEmailHint: {
+        fontSize: 13,
+        color: '#888',
+    },
+    cancelRow: {
+        alignSelf: 'flex-start',
+        marginBottom: 8,
+    },
+    cancelText: {
+        fontSize: 16,
+        color: '#2c5f7c',
+        fontWeight: '600',
     },
     imagePickerContainer: {
         alignSelf: 'center',
